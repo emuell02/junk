@@ -2217,10 +2217,6 @@ USE PHYSICAL_FUNCTIONS, ONLY: GET_SPECIFIC_HEAT
 INTEGER, INTENT(IN) :: NM,CODE
 REAL(EB) :: UODX,VODY,WODZ,UVW,UVWMAX,R_DX2,MU_MAX,MUTRM,CP,ZZ_GET(0:N_TRACKED_SPECIES)
 INTEGER  :: I,J,K,IW,IIG,JJG,KKG
-REAL(EB) :: P_UVWMAX,P_MU_MAX,P_MU_TMP !private variables for OpenMP-Code
-INTEGER  :: P_ICFL,P_JCFL,P_KCFL,P_I_VN,P_J_VN,P_K_VN !private variables for OpenMP-Code
-REAL(EB), POINTER, DIMENSION(:,:,:) :: UU=>NULL(),VV=>NULL(),WW=>NULL(),RHOP=>NULL(),DP=>NULL(),MUP=>NULL()
-REAL(EB), POINTER, DIMENSION(:,:,:,:) :: ZZP=>NULL()
 TYPE(WALL_TYPE), POINTER :: WC=>NULL()
 
 IF (EVACUATION_ONLY(NM)) THEN
@@ -2228,175 +2224,35 @@ IF (EVACUATION_ONLY(NM)) THEN
    RETURN
 ENDIF
 
-SELECT CASE(CODE)
-   CASE(1)
-      UU => MESHES(NM)%U
-      VV => MESHES(NM)%V
-      WW => MESHES(NM)%W
-      RHOP => MESHES(NM)%RHO
-      DP => MESHES(NM)%D
-      ZZP => MESHES(NM)%ZZ
-   CASE(2)
-      UU => MESHES(NM)%US
-      VV => MESHES(NM)%VS
-      WW => MESHES(NM)%WS
-      RHOP => MESHES(NM)%RHOS
-      DP => MESHES(NM)%DS
-      ZZP => MESHES(NM)%ZZS
-END SELECT
- 
 CHANGE_TIME_STEP(NM) = .FALSE.
 UVWMAX = 0._EB
 VN     = 0._EB
 MUTRM  = 1.E-9_EB
 R_DX2  = 1.E-9_EB
 
-! Strategy for OpenMP version of CFL/VN number determination
-! - find max CFL/VN number for each thread (P_UVWMAX/P_MU_MAX)
-! - save I,J,K of each P_UVWMAX/P_MU_MAX in P_ICFL... for each thread
-! - compare sequentially all P_UVWMAX/P_MU_MAX and find the global maximum
-! - save P_ICFL... of the "winning" thread in the global ICFL... variable
- 
 ! Determine max CFL number from all grid cells
-
-SELECT_VELOCITY_NORM: SELECT CASE (CFL_VELOCITY_NORM)
-   CASE(0)
-      P_UVWMAX = UVWMAX
-      !$OMP PARALLEL DEFAULT(NONE) & 
-      !$OMP SHARED(UVWMAX,ICFL,JCFL,KCFL,UU,VV,WW,RDXN,RDYN,RDZN,IBAR,JBAR,KBAR,DP) &
-      !$OMP PRIVATE(P_ICFL,P_JCFL,P_KCFL) &
-      !$OMP FIRSTPRIVATE(P_UVWMAX) 
-
-      !$OMP DO COLLAPSE(3) SCHEDULE(STATIC) PRIVATE(K,J,I,UODX,VODY,WODZ,UVW)
-      DO K=0,KBAR
-         DO J=0,JBAR
-            DO I=0,IBAR
-               UODX = ABS(UU(I,J,K))*RDXN(I)
-               VODY = ABS(VV(I,J,K))*RDYN(J)
-               WODZ = ABS(WW(I,J,K))*RDZN(K)
-               UVW  = MAX(UODX,VODY,WODZ) + ABS(DP(I,J,K))
-               IF (UVW>=P_UVWMAX) THEN
-                  P_UVWMAX = UVW
-                  P_ICFL = I
-                  P_JCFL = J
-                  P_KCFL = K
-               ENDIF
-            ENDDO
-         ENDDO
+DO K=1,KBAR
+   DO J=1,JBAR
+      DO I=1,IBAR
+         IF(SOLID(CELL_INDEX(I,J,K))) CYCLE
+         UODX = MAXVAL(US(I-1:I,J,K))*RDX(I)
+         VODY = MAXVAL(VV(I,J-1:J,K))*RDY(J)
+         WODZ = MAXVAL(WW(I,J,K-1:K))*RDZ(K)
+         SELECT CASE (CFL_VELOCITY_NORM)
+            CASE(0) ; UVW = MAX(UODX,VODY,WODZ) + ABS(DS(I,J,K))
+            CASE(1) ; UVW = UODX + VODY + WODZ  + ABS(DS(I,J,K))
+            CASE(2) ; UVW = SQRT(UODX**2+VODY**2+WODZ**2) + ABS(DS(I,J,K))           
+            CASE(3) ; UVW = MAX(UODX,VODY,WODZ) 
+         END SELECT
+         IF (UVW>=UVWMAX) THEN
+            UVWMAX = UVW
+            ICFL = I
+            JCFL = J
+            KCFL = K
+         ENDIF
       ENDDO
-      !$OMP END DO NOWAIT
-      !$OMP CRITICAL
-      IF (P_UVWMAX>=UVWMAX) THEN
-         UVWMAX = P_UVWMAX
-         ICFL=P_ICFL
-         JCFL=P_JCFL
-         KCFL=P_KCFL
-      ENDIF
-      !$OMP END CRITICAL
-      !$OMP END PARALLEL
-   CASE(1)
-      P_UVWMAX = UVWMAX
-      !$OMP PARALLEL DEFAULT(NONE) &
-      !$OMP SHARED(UVWMAX,ICFL,JCFL,KCFL,UU,VV,WW,RDXN,RDYN,RDZN,IBAR,JBAR,KBAR,DP) &
-      !$OMP PRIVATE(P_ICFL,P_JCFL,P_KCFL) &
-      !$OMP FIRSTPRIVATE(P_UVWMAX) 
-
-      !$OMP DO COLLAPSE(3) SCHEDULE(STATIC) PRIVATE(K,J,I,UVW)
-      DO K=0,KBAR
-         DO J=0,JBAR
-            DO I=0,IBAR
-               UVW = ABS(UU(I,J,K)*RDXN(I)) + ABS(VV(I,J,K)*RDYN(J)) + ABS(WW(I,J,K)*RDZN(K))
-               UVW = UVW + ABS(DP(I,J,K))
-               IF (UVW>=P_UVWMAX) THEN
-                  P_UVWMAX = UVW
-                  P_ICFL=I
-                  P_JCFL=J
-                  P_KCFL=K
-               ENDIF
-            ENDDO
-         ENDDO
-      ENDDO
-      !$OMP END DO NOWAIT
-      !$OMP CRITICAL
-      IF (P_UVWMAX>=UVWMAX) THEN
-         UVWMAX = P_UVWMAX
-         ICFL=P_ICFL
-         JCFL=P_JCFL
-         KCFL=P_KCFL
-      ENDIF
-      !$OMP END CRITICAL
-      !$OMP END PARALLEL
-   CASE(2)
-      P_UVWMAX = UVWMAX
-      !$OMP PARALLEL DEFAULT(NONE) &
-      !$OMP SHARED(UVWMAX,ICFL,JCFL,KCFL,UU,VV,WW,RDXN,RDYN,RDZN,IBAR,JBAR,KBAR,DP) &
-      !$OMP PRIVATE(P_ICFL,P_JCFL,P_KCFL) &
-      !$OMP FIRSTPRIVATE(P_UVWMAX) 
-
-      !$OMP DO COLLAPSE(3) SCHEDULE(STATIC) PRIVATE(K,J,I,UVW)
-      DO K=0,KBAR
-         DO J=0,JBAR
-            DO I=0,IBAR
-               UVW = SQRT( (UU(I,J,K)*RDXN(I))**2 + (VV(I,J,K)*RDYN(J))**2 + (WW(I,J,K)*RDZN(K))**2 )
-               UVW = UVW + ABS(DP(I,J,K))
-               IF (UVW>=P_UVWMAX) THEN
-                  P_UVWMAX = UVW
-                  P_ICFL=I
-                  P_JCFL=J
-                  P_KCFL=K
-               ENDIF
-            ENDDO
-         ENDDO
-      ENDDO
-      !$OMP END DO NOWAIT
-      !$OMP CRITICAL
-      IF (P_UVWMAX>=UVWMAX) THEN
-         UVWMAX = P_UVWMAX
-         ICFL=P_ICFL
-         JCFL=P_JCFL
-         KCFL=P_KCFL
-      ENDIF
-      !$OMP END CRITICAL
-      !$OMP END PARALLEL
-   CASE(3)
-      P_UVWMAX = UVWMAX
-      !$OMP PARALLEL DEFAULT(NONE) &
-      !$OMP SHARED(UVWMAX,ICFL,JCFL,KCFL,FVX,FVY,FVZ,RDXN,RDYN,RDZN,IBAR,JBAR,KBAR,DP) &
-      !$OMP PRIVATE(P_ICFL,P_JCFL,P_KCFL) &
-      !$OMP FIRSTPRIVATE(P_UVWMAX) 
-
-      !$OMP DO COLLAPSE(3) SCHEDULE(STATIC) PRIVATE(K,J,I,UODX,VODY,WODZ,UVW)
-      DO K=0,KBAR
-         DO J=0,JBAR
-            DO I=0,IBAR
-               ! Experimental:
-               ! The idea here is that basing the time scale off the acceleration should also account for
-               ! VN (Von Neumann), GR (gravity), and BARO (baroclinic torque), or whatever other physics
-               ! you decide to include in F_i.
-               UODX = SQRT(ABS(FVX(I,J,K))*RDXN(I))
-               VODY = SQRT(ABS(FVY(I,J,K))*RDYN(J))
-               WODZ = SQRT(ABS(FVZ(I,J,K))*RDZN(K))
-               UVW  = MAX(UODX,VODY,WODZ) + ABS(DP(I,J,K))
-               IF (UVW>=P_UVWMAX) THEN
-                  P_UVWMAX = UVW
-                  P_ICFL = I
-                  P_JCFL = J
-                  P_KCFL = K
-               ENDIF
-            ENDDO
-         ENDDO
-      ENDDO
-      !$OMP END DO NOWAIT
-      !$OMP CRITICAL
-      IF (P_UVWMAX>=UVWMAX) THEN
-         UVWMAX = P_UVWMAX
-         ICFL=P_ICFL
-         JCFL=P_JCFL
-         KCFL=P_KCFL
-      ENDIF
-      !$OMP END CRITICAL
-      !$OMP END PARALLEL
-END SELECT SELECT_VELOCITY_NORM
+   ENDDO
+ENDDO
 
 HEAT_TRANSFER_IF: IF (CHECK_HT) THEN
    WALL_LOOP: DO IW=1,N_EXTERNAL_WALL_CELLS+N_INTERNAL_WALL_CELLS
