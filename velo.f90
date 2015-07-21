@@ -2239,9 +2239,9 @@ DO K=1,KBAR
    DO J=1,JBAR
       DO I=1,IBAR
          IF(SOLID(CELL_INDEX(I,J,K))) CYCLE
-         UODX = MAXVAL(US(I-1:I,J,K))*RDX(I)
-         VODY = MAXVAL(VV(I,J-1:J,K))*RDY(J)
-         WODZ = MAXVAL(WW(I,J,K-1:K))*RDZ(K)
+         UODX = MAXVAL(ABS(US(I-1:I,J,K)))*RDX(I)
+         VODY = MAXVAL(ABS(VS(I,J-1:J,K)))*RDY(J)
+         WODZ = MAXVAL(ABS(WS(I,J,K-1:K)))*RDZ(K)
          SELECT CASE (CFL_VELOCITY_NORM)
             CASE(0) ; UVW = MAX(UODX,VODY,WODZ) + ABS(DS(I,J,K))
             CASE(1) ; UVW = UODX + VODY + WODZ  + ABS(DS(I,J,K))
