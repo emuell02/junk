@@ -47,6 +47,7 @@ build/
 *.scc
 *.u2d
 *.vfproj
+*.sln
 
 # Visual C++ cache files
 ipch/
