@@ -2277,14 +2277,6 @@ HEAT_TRANSFER_IF: IF (CHECK_HT) THEN
    ENDDO WALL_LOOP
 ENDIF HEAT_TRANSFER_IF
 
-GRAVITY_IF: IF (CHECK_GR) THEN ! resolve gravity waves
-   UVWMAX = MAX(UVWMAX, SQRT(ABS(GVEC(1))*MAXVAL(RDX)),&
-                        SQRT(ABS(GVEC(2))*MAXVAL(RDY)),&
-                        SQRT(ABS(GVEC(3))*MAXVAL(RDZ)))
-ENDIF GRAVITY_IF
-
-UVWMAX = MAX(UVWMAX,IBM_UVWMAX) ! for moving immersed boundary method
-
 CFL = DT*UVWMAX
  
 ! Determine max Von Neumann Number for fine grid calcs
