@@ -110,33 +110,22 @@ WALL_CELL_LOOP: DO IW=1,N_EXTERNAL_WALL_CELLS
 
       NOT_OPEN: IF (WC%BOUNDARY_TYPE/=OPEN_BOUNDARY .AND. WC%BOUNDARY_TYPE/=INTERPOLATED_BOUNDARY) THEN
 
-         ! Solid boundary that uses a Dirichlet BC to drive the normal component of velocity towards UWP
+         ! Solid boundary that uses a Dirichlet BC. Assume that the pressure at the boundary (BXS, etc) is the average of the
+         ! last computed pressures in the ghost and adjacent gas cells.
  
          SELECT CASE(IOR)
             CASE( 1)
-               IF (PREDICTOR) DUUDT =       RFODT*(-UWP(IW)-        U(0,J,K)           )
-               IF (CORRECTOR) DUUDT = 2._EB*RFODT*(-UWP(IW)-0.5_EB*(U(0,J,K)+US(0,J,K)))
-               BXS(J,K) = HP(1,J,K)     + 0.5_EB*DX(0)   *(DUUDT+FVX(0,J,K))
+               BXS(J,K) = 0.5_EB*(HP(0,J,K)+HP(1,J,K))
             CASE(-1) 
-               IF (PREDICTOR) DUUDT =       RFODT*( UWP(IW)-        U(IBAR,J,K)              )
-               IF (CORRECTOR) DUUDT = 2._EB*RFODT*( UWP(IW)-0.5_EB*(U(IBAR,J,K)+US(IBAR,J,K)))
-               BXF(J,K) = HP(IBAR,J,K) - 0.5_EB*DX(IBP1)*(DUUDT+FVX(IBAR,J,K))
+               BXF(J,K) = 0.5_EB*(HP(IBAR,J,K)+HP(IBP1,J,K))
             CASE( 2)
-               IF (PREDICTOR) DVVDT =       RFODT*(-UWP(IW)-        V(I,0,K)           ) 
-               IF (CORRECTOR) DVVDT = 2._EB*RFODT*(-UWP(IW)-0.5_EB*(V(I,0,K)+VS(I,0,K)))
-               BYS(I,K) = HP(I,1,K)    + 0.5_EB*DY(0)   *(DVVDT+FVY(I,0,K))
+               BYS(I,K) = 0.5_EB*(HP(I,0,K)+HP(I,1,K))
             CASE(-2) 
-               IF (PREDICTOR) DVVDT =       RFODT*( UWP(IW)-        V(I,JBAR,K)              )
-               IF (CORRECTOR) DVVDT = 2._EB*RFODT*( UWP(IW)-0.5_EB*(V(I,JBAR,K)+VS(I,JBAR,K)))
-               BYF(I,K) = HP(I,JBAR,K) - 0.5_EB*DY(JBP1)*(DVVDT+FVY(I,JBAR,K))
+               BYF(I,K) = 0.5_EB*(HP(I,JBAR,K)+HP(I,JBP1,K))
             CASE( 3)
-               IF (PREDICTOR) DWWDT =       RFODT*(-UWP(IW)-        W(I,J,0)           )
-               IF (CORRECTOR) DWWDT = 2._EB*RFODT*(-UWP(IW)-0.5_EB*(W(I,J,0)+WS(I,J,0)))
-               BZS(I,J) = HP(I,J,1)    + 0.5_EB*DZ(0)   *(DWWDT+FVZ(I,J,0))
+               BZS(I,J) = 0.5_EB*(HP(I,J,0)+HP(I,J,1))
             CASE(-3) 
-               IF (PREDICTOR) DWWDT =       RFODT*( UWP(IW)-        W(I,J,KBAR)              )
-               IF (CORRECTOR) DWWDT = 2._EB*RFODT*( UWP(IW)-0.5_EB*(W(I,J,KBAR)+WS(I,J,KBAR)))
-               BZF(I,J) = HP(I,J,KBAR) - 0.5_EB*DZ(KBP1)*(DWWDT+FVZ(I,J,KBAR))
+               BZF(I,J) = 0.5_EB*(HP(I,J,KBAR)+HP(I,J,KBP1))
          END SELECT
 
       ENDIF NOT_OPEN
