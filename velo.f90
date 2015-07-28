@@ -1188,27 +1188,27 @@ WALL_LOOP: DO IW=1,N_EXTERNAL_WALL_CELLS+N_INTERNAL_WALL_CELLS
       SELECT CASE(IOR)
          CASE( 1) 
             IF (PREDICTOR) DUUDT =       RFODT*(-WC%UWS-U(II,JJ,KK))
-            IF (CORRECTOR) DUUDT = 2._EB*RFODT*(-WC%UW-0.5_EB*(U(II,JJ,KK)+US(II,JJ,KK)))
+            IF (CORRECTOR) DUUDT = 2._EB*RFODT*(-WC%UWS-0.5_EB*(U(II,JJ,KK)+US(II,JJ,KK)))
             FVX(II,JJ,KK) =   -RDXN(II)  *(HP(II+1,JJ,KK)-HP(II,JJ,KK)) - DUUDT
          CASE(-1) 
             IF (PREDICTOR) DUUDT =       RFODT*( WC%UWS-U(II-1,JJ,KK))
-            IF (CORRECTOR) DUUDT = 2._EB*RFODT*( WC%UW-0.5_EB*(U(II-1,JJ,KK)+US(II-1,JJ,KK)))
+            IF (CORRECTOR) DUUDT = 2._EB*RFODT*( WC%UWS-0.5_EB*(U(II-1,JJ,KK)+US(II-1,JJ,KK)))
             FVX(II-1,JJ,KK) = -RDXN(II-1)*(HP(II,JJ,KK)-HP(II-1,JJ,KK)) - DUUDT
          CASE( 2) 
             IF (PREDICTOR) DVVDT =       RFODT*(-WC%UWS-V(II,JJ,KK))
-            IF (CORRECTOR) DVVDT = 2._EB*RFODT*(-WC%UW-0.5_EB*(V(II,JJ,KK)+VS(II,JJ,KK)))
+            IF (CORRECTOR) DVVDT = 2._EB*RFODT*(-WC%UWS-0.5_EB*(V(II,JJ,KK)+VS(II,JJ,KK)))
             FVY(II,JJ,KK)   = -RDYN(JJ)  *(HP(II,JJ+1,KK)-HP(II,JJ,KK)) - DVVDT
          CASE(-2)
             IF (PREDICTOR) DVVDT =       RFODT*( WC%UWS-V(II,JJ-1,KK))
-            IF (CORRECTOR) DVVDT = 2._EB*RFODT*( WC%UW-0.5_EB*(V(II,JJ-1,KK)+VS(II,JJ-1,KK)))
+            IF (CORRECTOR) DVVDT = 2._EB*RFODT*( WC%UWS-0.5_EB*(V(II,JJ-1,KK)+VS(II,JJ-1,KK)))
             FVY(II,JJ-1,KK) = -RDYN(JJ-1)*(HP(II,JJ,KK)-HP(II,JJ-1,KK)) - DVVDT
          CASE( 3) 
             IF (PREDICTOR) DWWDT =       RFODT*(-WC%UWS-W(II,JJ,KK))
-            IF (CORRECTOR) DWWDT = 2._EB*RFODT*(-WC%UW-0.5_EB*(W(II,JJ,KK)+WS(II,JJ,KK)))
+            IF (CORRECTOR) DWWDT = 2._EB*RFODT*(-WC%UWS-0.5_EB*(W(II,JJ,KK)+WS(II,JJ,KK)))
             FVZ(II,JJ,KK)   = -RDZN(KK)  *(HP(II,JJ,KK+1)-HP(II,JJ,KK)) - DWWDT
          CASE(-3) 
             IF (PREDICTOR) DWWDT =       RFODT*( WC%UWS-W(II,JJ,KK-1))
-            IF (CORRECTOR) DWWDT = 2._EB*RFODT*( WC%UW-0.5_EB*(W(II,JJ,KK-1)+WS(II,JJ,KK-1)))
+            IF (CORRECTOR) DWWDT = 2._EB*RFODT*( WC%UWS-0.5_EB*(W(II,JJ,KK-1)+WS(II,JJ,KK-1)))
             FVZ(II,JJ,KK-1) = -RDZN(KK-1)*(HP(II,JJ,KK)-HP(II,JJ,KK-1)) - DWWDT
       END SELECT
    ENDIF
