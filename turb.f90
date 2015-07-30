@@ -17,7 +17,7 @@ CHARACTER(255), PARAMETER :: turbdate='$Date: 2012-02-02 07:53:17 -0800 (Thu, 02
 
 PRIVATE
 PUBLIC :: NS_ANALYTICAL_SOLUTION, INIT_TURB_ARRAYS, VARDEN_DYNSMAG, &
-          GET_REV_turb, WERNER_WENGLE_WALL_MODEL, WALL_MODEL2, COMPRESSION_WAVE, VELTAN2D,VELTAN3D,STRATIFIED_MIXING_LAYER, &
+          GET_REV_turb, WALL_MODEL, COMPRESSION_WAVE, VELTAN2D,VELTAN3D,STRATIFIED_MIXING_LAYER, &
           SURFACE_HEAT_FLUX_MODEL, SYNTHETIC_TURBULENCE, SYNTHETIC_EDDY_SETUP, TEST_FILTER, EX2G3D, TENSOR_DIFFUSIVITY_MODEL
  
 CONTAINS
@@ -741,99 +741,99 @@ UBAR(N_HI) = MIN(U_MAX,MAX(U_MIN,2._EB*UBAR(N_HI-1)-UBAR(N_HI-2)))
 END SUBROUTINE TOPHAT_FILTER_1D
 
 
-SUBROUTINE WERNER_WENGLE_WALL_MODEL(SF,U_TAU,U1,NU,DZ,ROUGHNESS)
-
-REAL(EB), INTENT(OUT) :: SF
-REAL(EB), INTENT(IN) :: U1,NU,DZ,ROUGHNESS
-
-REAL(EB), PARAMETER :: A=8.3_EB,B=1._EB/7._EB
-REAL(EB), PARAMETER :: Z_PLUS_TURBULENT = 11.81_EB
-REAL(EB), PARAMETER :: ALPHA=7.202125273562269_EB !! ALPHA=(1._EB-B)/2._EB*A**((1._EB+B)/(1._EB-B))
-REAL(EB), PARAMETER :: BETA=1._EB+B
-REAL(EB), PARAMETER :: ETA=(1._EB+B)/A
-REAL(EB), PARAMETER :: GAMMA=2._EB/(1._EB+B)
-REAL(EB), PARAMETER :: RKAPPA=2.44_EB ! 1./von Karman constant
-REAL(EB), PARAMETER :: BTILDE=8.50_EB ! see Pope p. 297
-
-REAL(EB) :: U_TAU,TAU_W,NUODZ,Z_PLUS,TAU_ROUGH
-
-! References (for smooth walls):
+!SUBROUTINE WERNER_WENGLE_WALL_MODEL(SF,U_TAU,U1,NU,DZ,ROUGHNESS)
 !
-! Werner, H., Wengle, H. (1991) Large-eddy simulation of turbulent flow over
-! and around a cube in a plate channel. 8th Symposium on Turbulent Shear
-! Flows, Munich, Germany.
+!REAL(EB), INTENT(OUT) :: SF
+!REAL(EB), INTENT(IN) :: U1,NU,DZ,ROUGHNESS
 !
-! Pierre Sagaut. Large Eddy Simulation for Incompressible Flows: An Introduction.
-! Springer, 2001.
+!REAL(EB), PARAMETER :: A=8.3_EB,B=1._EB/7._EB
+!REAL(EB), PARAMETER :: Z_PLUS_TURBULENT = 11.81_EB
+!REAL(EB), PARAMETER :: ALPHA=7.202125273562269_EB !! ALPHA=(1._EB-B)/2._EB*A**((1._EB+B)/(1._EB-B))
+!REAL(EB), PARAMETER :: BETA=1._EB+B
+!REAL(EB), PARAMETER :: ETA=(1._EB+B)/A
+!REAL(EB), PARAMETER :: GAMMA=2._EB/(1._EB+B)
+!REAL(EB), PARAMETER :: RKAPPA=2.44_EB ! 1./von Karman constant
+!REAL(EB), PARAMETER :: BTILDE=8.50_EB ! see Pope p. 297
 !
-! Temmerman, L., Leschziner, M.A., Mellen, C.P., and Frohlich, J. (2003)
-! Investigation of wall-function approximations and subgrid-scale models in
-! Large Eddy Simulation of separated flow in a channel with streamwise
-! periodic constrictions. International Journal of Heat and Fluid Flow,
-! Vol. 24, No. 2, pp. 157-180.
+!REAL(EB) :: U_TAU,TAU_W,NUODZ,Z_PLUS,TAU_ROUGH
 !
-! Breuer, M., Kniazev, B., and Abel, M. (2007) Development of wall models
-! for LES of separated flows using statistical evaluations. Computers and
-! Fluids, Vol. 36, pp. 817-837.
+!! References (for smooth walls):
+!!
+!! Werner, H., Wengle, H. (1991) Large-eddy simulation of turbulent flow over
+!! and around a cube in a plate channel. 8th Symposium on Turbulent Shear
+!! Flows, Munich, Germany.
+!!
+!! Pierre Sagaut. Large Eddy Simulation for Incompressible Flows: An Introduction.
+!! Springer, 2001.
+!!
+!! Temmerman, L., Leschziner, M.A., Mellen, C.P., and Frohlich, J. (2003)
+!! Investigation of wall-function approximations and subgrid-scale models in
+!! Large Eddy Simulation of separated flow in a channel with streamwise
+!! periodic constrictions. International Journal of Heat and Fluid Flow,
+!! Vol. 24, No. 2, pp. 157-180.
+!!
+!! Breuer, M., Kniazev, B., and Abel, M. (2007) Development of wall models
+!! for LES of separated flows using statistical evaluations. Computers and
+!! Fluids, Vol. 36, pp. 817-837.
+!!
+!! McDermott, R. (2009) FDS Wall Flows, Part I: Straight Channels, NIST Technical Note.
+!!
+!! References (for rough surfaces):
+!!
+!! S. B. Pope (2000) Turbulent Flows, Cambridge.
+!!
+!! Moeng, C.-H. (1984) A Large-Eddy Simulation Model for the Study of Planetary
+!! Boundary-Layer Turbulence. Journal of the Atmospheric Sciences, Vol. 41, No. 13,
+!! pp. 2052-2062.
+!!
+!! Stoll, R., Porte-Agel, F. (2008) Large-Eddy Simulation of the Stable Atmospheric
+!! Boundary Layer using Dynamic Models with Different Averaging Schemes. Boundary-Layer
+!! Meteorology, 126:1-28.
+!!
+!! Comments:
+!!
+!! The slip factor (SF) is based on the following approximation to the wall stress
+!! (note that u0 is the ghost cell value of the streamwise velocity component and
+!! z is the wall-normal direction):
+!! tau_w = mu*(u1-u0)/dz = mu*(u1-SF*u1)/dz = mu*u1/dz*(1-SF)
+!! note that tau_w/rho = nu*u1/dz*(1-SF)
 !
-! McDermott, R. (2009) FDS Wall Flows, Part I: Straight Channels, NIST Technical Note.
-!
-! References (for rough surfaces):
-!
-! S. B. Pope (2000) Turbulent Flows, Cambridge.
-!
-! Moeng, C.-H. (1984) A Large-Eddy Simulation Model for the Study of Planetary
-! Boundary-Layer Turbulence. Journal of the Atmospheric Sciences, Vol. 41, No. 13,
-! pp. 2052-2062.
-!
-! Stoll, R., Porte-Agel, F. (2008) Large-Eddy Simulation of the Stable Atmospheric
-! Boundary Layer using Dynamic Models with Different Averaging Schemes. Boundary-Layer
-! Meteorology, 126:1-28.
-!
-! Comments:
-!
-! The slip factor (SF) is based on the following approximation to the wall stress
-! (note that u0 is the ghost cell value of the streamwise velocity component and
-! z is the wall-normal direction):
-! tau_w = mu*(u1-u0)/dz = mu*(u1-SF*u1)/dz = mu*u1/dz*(1-SF)
-! note that tau_w/rho = nu*u1/dz*(1-SF)
-
-TAU_ROUGH = 0._EB
-IF (ROUGHNESS>0._EB) THEN
-   ! Pope (2000)
-   TAU_ROUGH = ( U1/(RKAPPA*LOG(0.5_EB*DZ/ROUGHNESS)+BTILDE) )**2 ! actually tau_w/rho
-ENDIF
-! Werner-Wengle
-NUODZ = NU/DZ
-TAU_W = (ALPHA*(NUODZ)**BETA + ETA*(NUODZ)**B*ABS(U1))**GAMMA ! actually tau_w/rho
-TAU_W = MAX(TAU_W,TAU_ROUGH)
-U_TAU = SQRT(TAU_W)
-Z_PLUS = DZ/(NU/(U_TAU+1.E-10_EB))
-IF (Z_PLUS>Z_PLUS_TURBULENT) THEN
-   SF = 1._EB-TAU_W/(NUODZ*ABS(U1)) ! log layer
-ELSE
-   SF = -1._EB ! viscous sublayer
-ENDIF
-
-!! check values...
-!IF (Z_PLUS>Z_PLUS_TURBULENT) THEN
-!   print *,'A = ',A
-!   print *,'B = ',B
-!   print *,'ALPHA = ',ALPHA
-!   print *,'BETA = ',BETA
-!   print *,'ETA = ',ETA
-!   print *,'GAMMA = ',GAMMA
-!   print *,'U1 = ',U1
-!   print *,'NU/DZ = ',NU_OVER_DZ
-!   print *,'TAU_W/RHO = ',TAU_W
-!   print *,'Z_PLUS = ',Z_PLUS
-!   print *,'SF = ',SF
-!   print *
+!TAU_ROUGH = 0._EB
+!IF (ROUGHNESS>0._EB) THEN
+!   ! Pope (2000)
+!   TAU_ROUGH = ( U1/(RKAPPA*LOG(0.5_EB*DZ/ROUGHNESS)+BTILDE) )**2 ! actually tau_w/rho
 !ENDIF
+!! Werner-Wengle
+!NUODZ = NU/DZ
+!TAU_W = (ALPHA*(NUODZ)**BETA + ETA*(NUODZ)**B*ABS(U1))**GAMMA ! actually tau_w/rho
+!TAU_W = MAX(TAU_W,TAU_ROUGH)
+!U_TAU = SQRT(TAU_W)
+!Z_PLUS = DZ/(NU/(U_TAU+1.E-10_EB))
+!IF (Z_PLUS>Z_PLUS_TURBULENT) THEN
+!   SF = 1._EB-TAU_W/(NUODZ*ABS(U1)) ! log layer
+!ELSE
+!   SF = -1._EB ! viscous sublayer
+!ENDIF
+!
+!!! check values...
+!!IF (Z_PLUS>Z_PLUS_TURBULENT) THEN
+!!   print *,'A = ',A
+!!   print *,'B = ',B
+!!   print *,'ALPHA = ',ALPHA
+!!   print *,'BETA = ',BETA
+!!   print *,'ETA = ',ETA
+!!   print *,'GAMMA = ',GAMMA
+!!   print *,'U1 = ',U1
+!!   print *,'NU/DZ = ',NU_OVER_DZ
+!!   print *,'TAU_W/RHO = ',TAU_W
+!!   print *,'Z_PLUS = ',Z_PLUS
+!!   print *,'SF = ',SF
+!!   print *
+!!ENDIF
+!
+!END SUBROUTINE WERNER_WENGLE_WALL_MODEL
 
-END SUBROUTINE WERNER_WENGLE_WALL_MODEL
-
-SUBROUTINE WALL_MODEL2(SLIP_FACTOR,U_TAU,Y_PLUS,U,NU,DY,S)
+SUBROUTINE WALL_MODEL(SLIP_FACTOR,U_TAU,Y_PLUS,U,NU,DY,S)
 
 REAL(EB), INTENT(OUT) :: SLIP_FACTOR,U_TAU,Y_PLUS
 REAL(EB), INTENT(IN) :: U,NU,DY,S ! S is the roughness length scale (Pope's notation)
@@ -961,7 +961,7 @@ ENDIF LES_IF
 !
 !END FUNCTION U_PLUS_BUFFER_POLY4
 
-END SUBROUTINE WALL_MODEL2
+END SUBROUTINE WALL_MODEL
 
 REAL(EB) FUNCTION VELTAN2D(U_VELO,U_SURF,NN,DN,DIVU,GRADU,GRADP,TAU_IJ,DT,RRHO,MU,I_VEL)
 
@@ -1022,7 +1022,7 @@ IF (DNS) THEN
 ELSE
    U_STRM_0 = U_STRM
    DO SUBIT=1,1
-      CALL WERNER_WENGLE_WALL_MODEL(SLIP_COEF,DUMMY,U_STRM-U_STRM_WALL,MU*RRHO,DN,0._EB)
+      CALL WALL_MODEL(SLIP_COEF,DUMMY,DUMMY,U_STRM-U_STRM_WALL,MU*RRHO,DN,0._EB)
       !IF (SLIP_COEF< -1._EB .OR. SLIP_COEF>-1._EB) THEN
       !   PRINT *,SUBIT,'WARNING: SLIP_COEF=',SLIP_COEF
       !ENDIF
@@ -1134,7 +1134,7 @@ IF (DNS) THEN
 ELSE
    U_STRM_0 = U_STRM
    DO SUBIT=1,1
-      CALL WERNER_WENGLE_WALL_MODEL(SLIP_COEF,DUMMY,U_STRM,MU*RRHO,DN,ROUGHNESS)
+      CALL WALL_MODEL(SLIP_COEF,DUMMY,DUMMY,U_STRM,MU*RRHO,DN,ROUGHNESS)
       !IF (SLIP_COEF<-100._EB .OR. SLIP_COEF>100._EB) THEN
       !   PRINT *,SUBIT,'WARNING: SLIP_COEF=',SLIP_COEF
       !ENDIF
