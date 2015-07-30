@@ -17,7 +17,7 @@ CHARACTER(255), PARAMETER :: turbdate='$Date: 2012-02-02 07:53:17 -0800 (Thu, 02
 
 PRIVATE
 PUBLIC :: NS_ANALYTICAL_SOLUTION, INIT_TURB_ARRAYS, VARDEN_DYNSMAG, &
-          GET_REV_turb, WERNER_WENGLE_WALL_MODEL, COMPRESSION_WAVE, VELTAN2D,VELTAN3D,STRATIFIED_MIXING_LAYER, &
+          GET_REV_turb, WERNER_WENGLE_WALL_MODEL, WALL_MODEL2, COMPRESSION_WAVE, VELTAN2D,VELTAN3D,STRATIFIED_MIXING_LAYER, &
           SURFACE_HEAT_FLUX_MODEL, SYNTHETIC_TURBULENCE, SYNTHETIC_EDDY_SETUP, TEST_FILTER, EX2G3D, TENSOR_DIFFUSIVITY_MODEL
  
 CONTAINS
@@ -833,6 +833,135 @@ ENDIF
 
 END SUBROUTINE WERNER_WENGLE_WALL_MODEL
 
+SUBROUTINE WALL_MODEL2(SLIP_FACTOR,U_TAU,Y_PLUS,U,NU,DY,S)
+
+REAL(EB), INTENT(OUT) :: SLIP_FACTOR,U_TAU,Y_PLUS
+REAL(EB), INTENT(IN) :: U,NU,DY,S ! S is the roughness length scale (Pope's notation)
+
+REAL(EB), PARAMETER :: RKAPPA=1._EB/0.41_EB ! 1/von Karman constant
+REAL(EB), PARAMETER :: B=5.2_EB,BTILDE_ROUGH=8.5_EB,BTILDE_MAX=9.5_EB ! see Pope (2000) pp. 294,297,298
+REAL(EB), PARAMETER :: S0=1._EB,S1=5.83_EB,S2=30._EB ! approx piece-wise function for Fig. 7.24, Pope (2000) p. 297
+REAL(EB), PARAMETER :: Y1=5._EB,Y2=30._EB
+REAL(EB), PARAMETER :: U1=5._EB,U2=RKAPPA*LOG(Y2)+B
+REAL(EB), PARAMETER :: EPS=1.E-10_EB
+
+REAL(EB) :: Y_CELL_CENTER,TAU_W,BTILDE,DELTA_NU,S_PLUS,DUDY
+INTEGER :: ITER
+
+! References:
+!
+! S. B. Pope (2000) Turbulent Flows, Cambridge.
+
+! Step 1: compute laminar (DNS) stress, and initial guess for LES stress
+
+Y_CELL_CENTER = 0.5_EB*DY
+DUDY = ABS(U)/Y_CELL_CENTER
+TAU_W = NU*DUDY                         ! actually tau_w/rho
+U_TAU = SQRT(ABS(TAU_W))                ! friction velocity
+DELTA_NU = NU/(U_TAU+EPS)               ! viscous length scale
+Y_PLUS = Y_CELL_CENTER/(DELTA_NU+EPS)
+SLIP_FACTOR = -1._EB
+
+! Step 2: compute turbulent (LES) stress
+
+LES_IF: IF (LES) THEN
+
+   ! NOTE: 2 iterations converges TAU_W to roughly 5 % residual error
+   !       3 iterations converges TAU_W to roughly 1 % residual error
+
+   DO ITER=1,3
+
+      S_PLUS = S/(DELTA_NU+EPS) ! roughness in viscous units
+
+      IF (S_PLUS < S0) THEN
+         ! smooth wall
+         Y_PLUS = Y_CELL_CENTER/(DELTA_NU+EPS)
+         IF (Y_PLUS < Y_WERNER_WENGLE) THEN
+            ! viscous sublayer
+            TAU_W = ( U/Y_PLUS )**2
+            U_TAU = SQRT(ABS(TAU_W))
+            DUDY = ABS(U)/Y_CELL_CENTER
+         !ELSE IF (Y_PLUS < Y2) THEN
+         !   ! buffer layer
+         !   TAU_W = ( U/U_PLUS_BUFFER_SEMILOG(Y_PLUS) )**2
+         !   U_TAU = SQRT(TAU_W)
+         !   DUDY = 0.5_EB*(ABS(U)/Y_CELL_CENTER + U_TAU*RKAPPA/Y_CELL_CENTER)
+         ELSE
+            ! log layer
+            TAU_W = ( U/(RKAPPA*LOG(Y_PLUS)+B) )**2
+            U_TAU = SQRT(ABS(TAU_W))
+            DUDY = U_TAU*RKAPPA/Y_CELL_CENTER
+         ENDIF
+      ELSE
+         ! rough wall
+         IF (S_PLUS < S1) THEN
+            BTILDE = B + RKAPPA*LOG(S_PLUS) ! Pope (2000) p. 297, Eq. (7.122)
+         ELSE IF (S_PLUS < S2) THEN
+            BTILDE = BTILDE_MAX ! approximation from Fig. 7.24, Pope (2000) p. 297
+         ELSE
+            BTILDE = BTILDE_ROUGH ! fully rough
+         ENDIF
+         Y_PLUS = Y_CELL_CENTER/S
+         TAU_W = ( U/(RKAPPA*LOG(Y_PLUS)+BTILDE) )**2  ! Pope (2000) p. 297, Eq. (7.121)
+         U_TAU = SQRT(ABS(TAU_W))
+         DUDY = U_TAU*RKAPPA/Y_CELL_CENTER
+      ENDIF
+
+      DELTA_NU = NU/(U_TAU+EPS)
+
+   ENDDO
+
+   ! NOTE: SLIP_FACTOR is no longer used to compute the wall stress, see VELOCITY_BC.
+   ! The stress is taken directly from U_TAU. SLIP_FACTOR is, however, still used to
+   ! compute the velocity gradient at the wall that feeds into the wall vorticity.
+   ! Since the gradients implied by the wall function can be large and lead to instabilities,
+   ! we bound the wall slip between no slip and free slip.
+
+   ! The slip factor (SF) is based on the following approximation to the wall gradient
+   ! (note that u0 is the ghost cell value of the streamwise velocity component and
+   ! y is the wall-normal direction):
+   ! dudy = (u-u0)/dy = (u-SF*u)/dy = u/dy*(1-SF) => SF = 1 - dudy*dy/u
+   ! In this routine, dudy is sampled from the wall model at the location y_cell_center.
+
+   SLIP_FACTOR = MAX(-1._EB,MIN(1._EB,1._EB-DUDY*DY/(ABS(U)+EPS))) ! -1.0 <= SLIP_FACTOR <= 1.0
+
+ENDIF LES_IF
+
+!CONTAINS
+!
+!REAL(EB) FUNCTION U_PLUS_BUFFER_SEMILOG(YP)
+!
+!REAL(EB), INTENT(IN) :: YP
+!REAL(EB), PARAMETER :: RKAPPA_BUFFER=(U2-U1)/(LOG(Y2)-LOG(Y1))
+!REAL(EB), PARAMETER :: B_BUFFER=U1-RKAPPA_BUFFER*LOG(Y1)
+!
+!! semi-log fit connecting U1=Y1=5 to U2=RKAPPA*LOG(Y2)+B at Y2=30
+!
+!U_PLUS_BUFFER_SEMILOG = RKAPPA_BUFFER*LOG(YP)+B_BUFFER
+!
+!END FUNCTION U_PLUS_BUFFER_SEMILOG
+!
+!REAL(EB) FUNCTION U_PLUS_BUFFER_POLY4(YP)
+!
+!REAL(EB), INTENT(IN) :: YP
+!REAL(EB) :: DYP
+!REAL(EB), PARAMETER :: DYPLUS=25._EB
+!REAL(EB), PARAMETER :: B1 = (U2-Y2)/DYPLUS**2
+!REAL(EB), PARAMETER :: B2 = (RKAPPA/Y2-1._EB)/DYPLUS
+!REAL(EB), PARAMETER :: B3 = (-RKAPPA/Y2**2)*0.5_EB
+!REAL(EB), PARAMETER :: C3 = 6._EB*B1-3._EB*B2+B3
+!REAL(EB), PARAMETER :: C2 = (4._EB*B1-B2 - 2._EB*C3)/DYPLUS
+!REAL(EB), PARAMETER :: C1 = (B1-C3-DYPLUS*C2)/DYPLUS**2
+!
+!! Jung-il Choi, Yonsei University
+!! 4th-order polynomial fit connecting U1=Y1=5 to U2=RKAPPA*LOG(Y2)+B at Y2=30
+!
+!DYP = YP-Y1
+!U_PLUS_BUFFER_POLY4 = C1*DYP**4 + C2*DYP**3 + C3*DYP**2 + YP
+!
+!END FUNCTION U_PLUS_BUFFER_POLY4
+
+END SUBROUTINE WALL_MODEL2
 
 REAL(EB) FUNCTION VELTAN2D(U_VELO,U_SURF,NN,DN,DIVU,GRADU,GRADP,TAU_IJ,DT,RRHO,MU,I_VEL)
 
