@@ -1740,7 +1740,7 @@ EDGE_LOOP: DO IE=1,N_EDGES
                ALTERED_GRADIENT(ICD_SGN) = .TRUE.
       
             ELSE
-               IF (VEL_T.NE.0) print*, VELOCITY_BC_INDEX
+               !IF (VEL_T.NE.0) print*, VELOCITY_BC_INDEX
                BOUNDARY_CONDITION: SELECT CASE(VELOCITY_BC_INDEX)
                   
                   CASE (FREE_SLIP_BC) BOUNDARY_CONDITION
@@ -1768,7 +1768,9 @@ EDGE_LOOP: DO IE=1,N_EDGES
                         RHO_WALL = 0.5_EB*( RHOP(IIGM,JJGM,KKGM) + RHOP(IIGP,JJGP,KKGP) )
                         CALL WERNER_WENGLE_WALL_MODEL(SLIP_COEF,DUMMY,VEL_GAS-VEL_T,MU_WALL/RHO_WALL,DXX(ICD),SF%ROUGHNESS)
                      ENDIF
-                     VEL_GHOST = 2._EB*VEL_T - VEL_GAS
+                     SLIP_COEF = 0.5_EB*(SLIP_COEF-1._EB)
+                     VEL_GHOST = VEL_T + SLIP_COEF*(VEL_GAS-VEL_T)
+                     !VEL_GHOST = 2._EB*VEL_T - VEL_GAS
                      DUIDXJ(ICD_SGN) = I_SGN*(VEL_GAS-VEL_GHOST)/DXX(ICD)
                      MU_DUIDXJ(ICD_SGN) = MU_WALL*(VEL_GAS-VEL_T)*I_SGN*(1._EB-SLIP_COEF)/DXX(ICD)
                      ALTERED_GRADIENT(ICD_SGN) = .TRUE.
