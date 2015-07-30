@@ -1740,9 +1740,9 @@ EDGE_LOOP: DO IE=1,N_EDGES
                ALTERED_GRADIENT(ICD_SGN) = .TRUE.
       
             ELSE
-
+               IF (VEL_T.NE.0) print*, VELOCITY_BC_INDEX
                BOUNDARY_CONDITION: SELECT CASE(VELOCITY_BC_INDEX)
-
+                  
                   CASE (FREE_SLIP_BC) BOUNDARY_CONDITION
 
                      VEL_GHOST = VEL_GAS
