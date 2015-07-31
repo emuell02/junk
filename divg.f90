@@ -714,6 +714,8 @@ PREDICT_NORMALS: IF (PREDICTOR) THEN
                      ELSE
                          PROFILE_FACTOR = 3.9*EXP(3*(ZC(KK)/12.5-1))
                      ENDIF
+                  ELSE 
+                     PROFILE_FACTOR=1
                   ENDIF
                   SELECT CASE(IOR)
                      CASE( 1)
