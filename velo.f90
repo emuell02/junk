@@ -1772,10 +1772,16 @@ EDGE_LOOP: DO IE=1,N_EDGES
                   END SELECT IEC_SELECT
                   IF (VT%IOR > 0) VEL_T = -VEL_T
                ELSE
-                  IF (SF%PROFILE==ATMOSPHERIC) PROFILE_FACTOR = (MAX(0._EB,ZC(KK)-GROUND_LEVEL)/SF%Z0)**SF%PLE
+                  IF (SF%PROFILE==ATMOSPHERIC) THEN
+                     IF (ZC(KK).GE.12.5) THEN
+                         PROFILE_FACTOR = (0.87/.41)*LOG((ZC(KK)-9.375)/0.4973)
+                     ELSE
+                         PROFILE_FACTOR = 3.9*EXP(3*(ZC(KK)/12.5-1))
+                     ENDIF
+                  ENDIF
                   RAMP_T = EVALUATE_RAMP(TSI,SF%TAU(TIME_VELO),SF%RAMP_INDEX(TIME_VELO))
-                  IF (IEC==1 .OR. (IEC==2 .AND. ICD==2)) VEL_T = RAMP_T*(PROFILE_FACTOR*SF%VEL_T(2) + VEL_EDDY)
-                  IF (IEC==3 .OR. (IEC==2 .AND. ICD==1)) VEL_T = RAMP_T*(PROFILE_FACTOR*SF%VEL_T(1) + VEL_EDDY)
+                  IF (IEC==1 .OR. (IEC==2 .AND. ICD==2)) VEL_T = RAMP_T*(PROFILE_FACTOR*(SF%VEL_T(2) + VEL_EDDY))
+                  IF (IEC==3 .OR. (IEC==2 .AND. ICD==1)) VEL_T = RAMP_T*(PROFILE_FACTOR*(SF%VEL_T(1) + VEL_EDDY))
                ENDIF
             ENDIF VEL_T_IF
  

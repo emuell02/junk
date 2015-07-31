@@ -708,19 +708,26 @@ PREDICT_NORMALS: IF (PREDICTOR) THEN
                   II = WC%II
                   JJ = WC%JJ
                   KK = WC%KK
+                  IF (SF%PROFILE==ATMOSPHERIC) THEN
+                     IF (ZC(KK).GE.12.5) THEN
+                         PROFILE_FACTOR = (0.87/.41)*LOG((ZC(KK)-9.375)/0.4973)
+                     ELSE
+                         PROFILE_FACTOR = 3.9*EXP(3*(ZC(KK)/12.5-1))
+                     ENDIF
+                  ENDIF
                   SELECT CASE(IOR)
                      CASE( 1)
-                        WC%UWS = WC%UWS - TIME_RAMP_FACTOR*PRES_RAMP_FACTOR*VT%U_EDDY(JJ,KK)
+                        WC%UWS = WC%UWS - TIME_RAMP_FACTOR*PRES_RAMP_FACTOR*VT%U_EDDY(JJ,KK)*PROFILE_FACTOR
                      CASE(-1)
-                        WC%UWS = WC%UWS + TIME_RAMP_FACTOR*PRES_RAMP_FACTOR*VT%U_EDDY(JJ,KK)
+                        WC%UWS = WC%UWS + TIME_RAMP_FACTOR*PRES_RAMP_FACTOR*VT%U_EDDY(JJ,KK)*PROFILE_FACTOR
                      CASE( 2)
-                        WC%UWS = WC%UWS - TIME_RAMP_FACTOR*PRES_RAMP_FACTOR*VT%V_EDDY(II,KK)
+                        WC%UWS = WC%UWS - TIME_RAMP_FACTOR*PRES_RAMP_FACTOR*VT%V_EDDY(II,KK)*PROFILE_FACTOR
                      CASE(-2)
-                        WC%UWS = WC%UWS + TIME_RAMP_FACTOR*PRES_RAMP_FACTOR*VT%V_EDDY(II,KK)
+                        WC%UWS = WC%UWS + TIME_RAMP_FACTOR*PRES_RAMP_FACTOR*VT%V_EDDY(II,KK)*PROFILE_FACTOR
                      CASE( 3)
-                        WC%UWS = WC%UWS - TIME_RAMP_FACTOR*PRES_RAMP_FACTOR*VT%W_EDDY(II,JJ)
+                        WC%UWS = WC%UWS - TIME_RAMP_FACTOR*PRES_RAMP_FACTOR*VT%W_EDDY(II,JJ)*PROFILE_FACTOR
                      CASE(-3)
-                        WC%UWS = WC%UWS + TIME_RAMP_FACTOR*PRES_RAMP_FACTOR*VT%W_EDDY(II,JJ)
+                        WC%UWS = WC%UWS + TIME_RAMP_FACTOR*PRES_RAMP_FACTOR*VT%W_EDDY(II,JJ)*PROFILE_FACTOR
                   END SELECT
                ENDIF
                EVAC_IF: IF (EVACUATION_ONLY(NM) .AND. EVACUATION_GRID(NM) .AND. EVAC_FDS6) THEN
