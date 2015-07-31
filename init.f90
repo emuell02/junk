@@ -307,9 +307,20 @@ IF (.NOT.EVACUATION_ONLY(NM)) M%FRHO    = 0._EB
 M%U       = U0
 M%V       = V0
 M%W       = W0
-M%US      = U0
-M%VS      = V0
-M%WS      = W0
+IF (ANY(MEAN_FORCING)) THEN
+   DO K=0,M%KBAR
+      DO J=0,M%JBAR
+         DO I=0,M%IBAR
+	    IF ( .NOT.(M%MEAN_FORCING_CELL(I,J,K) .AND. M%MEAN_FORCING_CELL(I+1,J,K)) ) M%U(I,J,K)=0._EB
+	    IF ( .NOT.(M%MEAN_FORCING_CELL(I,J,K) .AND. M%MEAN_FORCING_CELL(I,J+1,K)) ) M%V(I,J,K)=0._EB
+	    IF ( .NOT.(M%MEAN_FORCING_CELL(I,J,K) .AND. M%MEAN_FORCING_CELL(I,J,K+1)) ) M%W(I,J,K)=0._EB
+	 ENDDO
+      ENDDO
+   ENDDO
+ENDIF
+M%US    = M%U
+M%VS    = M%V
+M%WS    = M%W
 M%FVX   = 0._EB
 M%FVY   = 0._EB
 M%FVZ   = 0._EB
