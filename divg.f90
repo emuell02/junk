@@ -710,9 +710,9 @@ PREDICT_NORMALS: IF (PREDICTOR) THEN
                   KK = WC%KK
                   IF (SF%PROFILE==ATMOSPHERIC) THEN
                      IF (ZC(KK).GE.12.5) THEN
-                         PROFILE_FACTOR = (0.87/.41)*LOG((ZC(KK)-9.375)/0.4973)
+                         PROFILE_FACTOR = (0.87/.41)*LOG((ZC(KK)-9.375)/0.4973)/3.9
                      ELSE
-                         PROFILE_FACTOR = 3.9*EXP(3*(ZC(KK)/12.5-1))
+                         PROFILE_FACTOR = EXP(3*(ZC(KK)/12.5-1))
                      ENDIF
                   ELSE 
                      PROFILE_FACTOR=1
