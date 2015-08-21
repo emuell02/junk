@@ -1120,29 +1120,28 @@ VENT_LOOP: DO NV=1,MESHES(NM)%N_VENT
       CASE(1)
          VT%X_EDDY_MIN = VT%X1-MAXVAL(VT%SIGMA_IJ(:,1))
          VT%X_EDDY_MAX = VT%X2+MAXVAL(VT%SIGMA_IJ(:,1))
-         VT%Y_EDDY_MIN = VT%Y1
-         VT%Y_EDDY_MAX = VT%Y2
-         VT%Z_EDDY_MIN = VT%Z1
-         VT%Z_EDDY_MAX = VT%Z2
+         VT%Y_EDDY_MIN = VT%Y1+MAXVAL(VT%SIGMA_IJ(:,1))
+         VT%Y_EDDY_MAX = VT%Y2-MAXVAL(VT%SIGMA_IJ(:,1))
+         VT%Z_EDDY_MIN = VT%Z1+MAXVAL(VT%SIGMA_IJ(:,1))
+         VT%Z_EDDY_MAX = VT%Z2-MAXVAL(VT%SIGMA_IJ(:,1))
       CASE(2)
-         VT%X_EDDY_MIN = VT%X1
-         VT%X_EDDY_MAX = VT%X2
+         VT%X_EDDY_MIN = VT%X1+MAXVAL(VT%SIGMA_IJ(:,2))
+         VT%X_EDDY_MAX = VT%X2-MAXVAL(VT%SIGMA_IJ(:,2))
          VT%Y_EDDY_MIN = VT%Y1-MAXVAL(VT%SIGMA_IJ(:,2))
          VT%Y_EDDY_MAX = VT%Y2+MAXVAL(VT%SIGMA_IJ(:,2))
-         VT%Z_EDDY_MIN = VT%Z1
-         VT%Z_EDDY_MAX = VT%Z2
+         VT%Z_EDDY_MIN = VT%Z1+MAXVAL(VT%SIGMA_IJ(:,2))
+         VT%Z_EDDY_MAX = VT%Z2-MAXVAL(VT%SIGMA_IJ(:,2))
       CASE(3)
-         VT%X_EDDY_MIN = VT%X1
-         VT%X_EDDY_MAX = VT%X2
-         VT%Y_EDDY_MIN = VT%Y1
-         VT%Y_EDDY_MAX = VT%Y2
+         VT%X_EDDY_MIN = VT%X1+MAXVAL(VT%SIGMA_IJ(:,3))
+         VT%X_EDDY_MAX = VT%X2-MAXVAL(VT%SIGMA_IJ(:,3))
+         VT%Y_EDDY_MIN = VT%Y1+MAXVAL(VT%SIGMA_IJ(:,3))
+         VT%Y_EDDY_MAX = VT%Y2-MAXVAL(VT%SIGMA_IJ(:,3))
          VT%Z_EDDY_MIN = VT%Z1-MAXVAL(VT%SIGMA_IJ(:,3))
          VT%Z_EDDY_MAX = VT%Z2+MAXVAL(VT%SIGMA_IJ(:,3))
    END SELECT
 
-   VT%EDDY_BOX_VOLUME = (VT%X_EDDY_MAX+2*MAXVAL(VT%SIGMA_IJ(:,1))-VT%X_EDDY_MIN) &
-      *(VT%Y_EDDY_MAX+2*MAXVAL(VT%SIGMA_IJ(:,2))-VT%Y_EDDY_MIN)*(VT%Z_EDDY_MAX &
-      +2*MAXVAL(VT%SIGMA_IJ(:,3))-VT%Z_EDDY_MIN)
+   VT%EDDY_BOX_VOLUME = (VT%X_EDDY_MAX-VT%X_EDDY_MIN)*(VT%Y_EDDY_MAX-VT%Y_EDDY_MIN)* &
+      (VT%Z_EDDY_MAX-VT%Z_EDDY_MIN)
    EDDY_LOOP: DO NE=1,VT%N_EDDY
       IERROR=1; CALL EDDY_POSITION(NE,NV,NM,IERROR,0)
       CALL EDDY_AMPLITUDE(NE,NV,NM)
@@ -1165,11 +1164,16 @@ VENT_LOOP: DO NV=1,MESHES(NM)%N_VENT
       CASE(2) !experimental divergence free method
          SIG_IJ => VT%SIGMA_IJ
          A_IJ(1,1)=sqrt((R_IJ(1,1)/SIG_IJ(1,1)**2+R_IJ(2,2)/SIG_IJ(2,2)**2+R_IJ(3,3)/SIG_IJ(3,3)**2 &
-            - 2*R_IJ(1,1)/SIG_IJ(1,1)**2)/(1*1))
+            - 2*R_IJ(1,1)/SIG_IJ(1,1)**2)/(2*2))
          A_IJ(2,2)=sqrt((R_IJ(1,1)/SIG_IJ(1,1)**2+R_IJ(2,2)/SIG_IJ(2,2)**2+R_IJ(3,3)/SIG_IJ(3,3)**2 &
-            - 2*R_IJ(2,2)/SIG_IJ(2,2)**2)/(1*1))   
+            - 2*R_IJ(2,2)/SIG_IJ(2,2)**2)/(2*2))   
          A_IJ(3,3)=sqrt((R_IJ(1,1)/SIG_IJ(1,1)**2+R_IJ(2,2)/SIG_IJ(2,2)**2+R_IJ(3,3)/SIG_IJ(3,3)**2 &
-            - 2*R_IJ(3,3)/SIG_IJ(3,3)**2)/(1*1))   
+            - 2*R_IJ(3,3)/SIG_IJ(3,3)**2)/(2*2))   
+      CASE(3) !experimental divergence free method
+         SIG_IJ => VT%SIGMA_IJ
+         A_IJ(1,1)=sqrt(R_IJ(1,1)+R_IJ(2,2)+R_IJ(3,3) - 2*R_IJ(1,1))
+         A_IJ(2,2)=sqrt(R_IJ(1,1)+R_IJ(2,2)+R_IJ(3,3) - 2*R_IJ(2,2))
+         A_IJ(3,3)=sqrt(R_IJ(1,1)+R_IJ(2,2)+R_IJ(3,3) - 2*R_IJ(3,3))
    END SELECT
    
    
@@ -1261,6 +1265,13 @@ VENT_LOOP: DO NV=1,N_VENT
                         VT%V_EDDY(JJ,KK) = VT%V_EDDY(JJ,KK) + SHAPE_FACTOR*ZZ*VT%CU_EDDY(NE)-SHAPE_FACTOR*XX*VT%CW_EDDY(NE)
                         SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,3),4)
                         VT%W_EDDY(JJ,KK) = VT%W_EDDY(JJ,KK) + SHAPE_FACTOR*XX*VT%CV_EDDY(NE)-SHAPE_FACTOR*YY*VT%CU_EDDY(NE)
+                     CASE(3)
+                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,1),5)/(XX**2+YY**2+ZZ**2)
+                        VT%U_EDDY(JJ,KK) = VT%U_EDDY(JJ,KK) + SHAPE_FACTOR*YY*VT%CW_EDDY(NE)-SHAPE_FACTOR*ZZ*VT%CV_EDDY(NE) 
+                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,2),5)/(XX**2+YY**2+ZZ**2)
+                        VT%V_EDDY(JJ,KK) = VT%V_EDDY(JJ,KK) + SHAPE_FACTOR*ZZ*VT%CU_EDDY(NE)-SHAPE_FACTOR*XX*VT%CW_EDDY(NE)
+                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,3),5)/(XX**2+YY**2+ZZ**2)
+                        VT%W_EDDY(JJ,KK) = VT%W_EDDY(JJ,KK) + SHAPE_FACTOR*XX*VT%CV_EDDY(NE)-SHAPE_FACTOR*YY*VT%CU_EDDY(NE)
                   END SELECT
                ENDDO
             ENDDO
@@ -1306,6 +1317,13 @@ VENT_LOOP: DO NV=1,N_VENT
                         SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,2),4)
                         VT%V_EDDY(II,KK) = VT%V_EDDY(II,KK) + SHAPE_FACTOR*ZZ*VT%CU_EDDY(NE)-SHAPE_FACTOR*XX*VT%CW_EDDY(NE)
                         SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,3),4)
+                        VT%W_EDDY(II,KK) = VT%W_EDDY(II,KK) + SHAPE_FACTOR*XX*VT%CV_EDDY(NE)-SHAPE_FACTOR*YY*VT%CU_EDDY(NE)
+                     CASE(3)
+                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,1),5)/(XX**2+YY**2+ZZ**2)
+                        VT%U_EDDY(II,KK) = VT%U_EDDY(II,KK) + SHAPE_FACTOR*YY*VT%CW_EDDY(NE)-SHAPE_FACTOR*ZZ*VT%CV_EDDY(NE)
+                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,2),5)/(XX**2+YY**2+ZZ**2)
+                        VT%V_EDDY(II,KK) = VT%V_EDDY(II,KK) + SHAPE_FACTOR*ZZ*VT%CU_EDDY(NE)-SHAPE_FACTOR*XX*VT%CW_EDDY(NE)
+                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,3),5)/(XX**2+YY**2+ZZ**2)
                         VT%W_EDDY(II,KK) = VT%W_EDDY(II,KK) + SHAPE_FACTOR*XX*VT%CV_EDDY(NE)-SHAPE_FACTOR*YY*VT%CU_EDDY(NE)
                   END SELECT
                ENDDO
@@ -1353,6 +1371,13 @@ VENT_LOOP: DO NV=1,N_VENT
                         VT%V_EDDY(II,JJ) = VT%V_EDDY(II,JJ) + SHAPE_FACTOR*ZZ*VT%CU_EDDY(NE)-SHAPE_FACTOR*XX*VT%CW_EDDY(NE)
                         SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,3),4)
                         VT%W_EDDY(II,JJ) = VT%W_EDDY(II,JJ) + SHAPE_FACTOR*XX*VT%CV_EDDY(NE)-SHAPE_FACTOR*YY*VT%CU_EDDY(NE)
+                     CASE(3)
+                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,1),5)/(XX**2+YY**2+ZZ**2)
+                        VT%U_EDDY(II,JJ) = VT%U_EDDY(II,JJ) + SHAPE_FACTOR*YY*VT%CW_EDDY(NE)-SHAPE_FACTOR*ZZ*VT%CV_EDDY(NE)
+                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,2),5)/(XX**2+YY**2+ZZ**2)
+                        VT%V_EDDY(II,JJ) = VT%V_EDDY(II,JJ) + SHAPE_FACTOR*ZZ*VT%CU_EDDY(NE)-SHAPE_FACTOR*XX*VT%CW_EDDY(NE)
+                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,3),5)/(XX**2+YY**2+ZZ**2)
+                        VT%W_EDDY(II,JJ) = VT%W_EDDY(II,JJ) + SHAPE_FACTOR*XX*VT%CV_EDDY(NE)-SHAPE_FACTOR*YY*VT%CU_EDDY(NE)
                   END SELECT
                ENDDO
             ENDDO  
@@ -1372,7 +1397,8 @@ VENT_LOOP: DO NV=1,N_VENT
          !VOLUME_WEIGHTING_FACTOR(1:3) = sqrt(20*VT%EDDY_BOX_VOLUME/REAL(VT%N_EDDY,EB)/VT%SIGMA_IJ(1,1)**5)
          VOLUME_WEIGHTING_FACTOR(1:3) = sqrt(10*VT%EDDY_BOX_VOLUME/REAL(VT%N_EDDY,EB))/EDDY_VOLUME(1) &
             *MINVAL(VT%SIGMA_IJ(1,:))*SUM(VT%SIGMA_IJ(1,:))/3
-         !print*,VOLUME_WEIGHTING_FACTOR(1),VT%EDDY_BOX_VOLUME,REAL(VT%N_EDDY,EB),VT%SIGMA_IJ(1,1)
+      CASE(3)
+         VOLUME_WEIGHTING_FACTOR(1:3) = SQRT(15*VT%EDDY_BOX_VOLUME)/SQRT(REAL(VT%N_EDDY,EB)*15*PI*EDDY_VOLUME(1))
    END SELECT
    ! note: EDDY_VOLUME included in SQRT based on Jung-il Choi write up.
    
@@ -1464,7 +1490,7 @@ SELECT CASE(EDDY_METHOD)
          VT%CV_EDDY(NE)=VT%CV_EDDY(NE)+VT%A_IJ(2,J)*EPS_EDDY(J)
          VT%CW_EDDY(NE)=VT%CW_EDDY(NE)+VT%A_IJ(3,J)*EPS_EDDY(J)
       ENDDO
-   CASE(2)
+   CASE(2:3)
          VT%CU_EDDY(NE)=VT%A_IJ(1,1)*EPS_EDDY(1)
          VT%CV_EDDY(NE)=VT%A_IJ(2,2)*EPS_EDDY(2)
          VT%CW_EDDY(NE)=VT%A_IJ(3,3)*EPS_EDDY(3)
@@ -1491,6 +1517,9 @@ SELECT CASE(CODE)
    CASE(4)
       DK = SQRT(X**2+Y**2+Z**2)
       IF (DK<1._EB) SHAPE_FUNCTION = SIG*(1-DK**2)
+   CASE(5)
+      DK = SQRT(X**2+Y**2+Z**2)
+      IF (DK<1._EB) SHAPE_FUNCTION = SIN(PI*DK)**2
 END SELECT
 
 END FUNCTION SHAPE_FUNCTION
