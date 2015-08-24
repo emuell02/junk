@@ -1774,9 +1774,9 @@ EDGE_LOOP: DO IE=1,N_EDGES
                ELSE
                   IF (SF%PROFILE==ATMOSPHERIC) THEN
                      IF (ZC(KK).GE.12.5) THEN
-                         PROFILE_FACTOR = (0.87/.41)*LOG((ZC(KK)-9.375)/0.4973)
+                         PROFILE_FACTOR = (0.87/.41)*LOG((ZC(KK)-9.375)/0.4973)/3.9
                      ELSE
-                         PROFILE_FACTOR = 3.9*EXP(3*(ZC(KK)/12.5-1))
+                         PROFILE_FACTOR = EXP(3*(ZC(KK)/12.5-1))
                      ENDIF
                   ENDIF
                   RAMP_T = EVALUATE_RAMP(TSI,SF%TAU(TIME_VELO),SF%RAMP_INDEX(TIME_VELO))
