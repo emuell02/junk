@@ -217,18 +217,20 @@ ELSE
       IF (T>=UVW_CLOCK_CBC(IUVW)) THEN
          WRITE(FN_UVW,'(A,A,I3.3,A)') TRIM(CHID),'_uvw_',IUVW,'.csv'
          CALL DUMP_UVW(NM,FN_UVW)
-         IUVW = IUVW + 1
+!        IUVW = IUVW + 1
+         MESHES(NM)%IUVW = MESHES(NM)%IUVW + 1
       ENDIF
    ENDIF PT2_IF
-   IF (T>=UVW_TIMER(IUVW+1)) THEN
+   IF (T>=UVW_TIMER(MESHES(NM)%IUVW)) THEN
       IF (NMESHES>1) THEN
-         WRITE(FN_UVW,'(A,A,I3.3,A,I3.3,A)') TRIM(CHID),'_uvw_t',IUVW+1,'_m',NM,'.csv'
+         WRITE(FN_UVW,'(A,A,I3.3,A,I3.3,A)') TRIM(CHID),'_uvw_t',MESHES(NM)%IUVW,'_m',NM,'.csv'
       ELSE
-         WRITE(FN_UVW,'(A,A,I3.3,A)') TRIM(CHID),'_uvw_',IUVW+1,'.csv'
+         WRITE(FN_UVW,'(A,A,I3.3,A)') TRIM(CHID),'_uvw_',MESHES(NM)%IUVW,'.csv'
       ENDIF
       CALL DUMP_UVW(NM,FN_UVW)
-      IUVW = IUVW + 1
+      MESHES(NM)%IUVW = MESHES(NM)%IUVW + 1
    ENDIF
+
 ENDIF EVACUATION_DUMP
 
 TUSED(7,NM) = TUSED(7,NM) + SECOND() - TNOW
@@ -5337,7 +5339,11 @@ SELECT CASE(INDX)
          ENDIF
       ENDIF
 
-      IF (SURFACE(WC%SURF_INDEX)%VEGETATION) THEN     !surface vegetation height
+      IF (SURFACE(WC%SURF_INDEX)%VEGETATION) THEN     !surface vegetation height for boundary fuel model
+         SOLID_PHASE_OUTPUT = WC%VEG_HEIGHT
+      ENDIF
+
+      IF (SURFACE(WC%SURF_INDEX)%VEG_LSET_SPREAD) THEN !surface vegetation height for level set model
          SOLID_PHASE_OUTPUT = WC%VEG_HEIGHT
       ENDIF
 

@@ -48,6 +48,7 @@ TYPE (PARTICLE_CLASS_TYPE), POINTER :: PC
 TYPE (VENTS_TYPE), POINTER :: VT
  
 IERR = 0
+IF (VEG_LEVEL_SET_UNCOUPLED) N_ZONE = 0
 M => MESHES(NM)
 IBP1 =>M%IBP1
 JBP1 =>M%JBP1
@@ -748,7 +749,7 @@ CALL ChkMemErr('INIT','WALL_WORK2',IZERO)
 
 ! Vegetation surface drag
 
-ALLOCATE(M%VEG_DRAG(0:IBP1,0:JBP1),STAT=IZERO)
+ALLOCATE(M%VEG_DRAG(0:IBP1,0:JBP1,1:8),STAT=IZERO)
 CALL ChkMemErr('INIT','VEG_DRAG',IZERO) 
 M%VEG_DRAG = 0._EB
  
@@ -861,7 +862,6 @@ ENDIF
 ! Go through all obstructions and decide which cell faces ought to be given a wall cell index and initialized
 
 M%N_INTERNAL_WALL_CELLS = 0
- 
 OBST_LOOP_2: DO N=1,M%N_OBST
    OB=>M%OBSTRUCTION(N)
  
@@ -2016,7 +2016,7 @@ DO NSLICE = 1, M%N_TERRAIN_SLCF
 ENDDO
 
 ! Fill arrays containing K index and physical height of terrain for use in level set firespread 
-IF (VEG_LEVEL_SET .AND. IOR==3) THEN 
+IF (VEG_LEVEL_SET .AND. IOR==3) THEN
   M%LS_Z_TERRAIN(WC%IIG,WC%JJG) = M%Z(WC%KKG-1)
 ENDIF
 
@@ -3107,10 +3107,10 @@ DO K=1,KBAR
 ENDDO
 
 END SUBROUTINE INITIAL_NOISE
- 
+
 
 SUBROUTINE UVW_INIT(NM,FN_UVW)
-
+ 
 ! Read UVW file
 
 USE COMP_FUNCTIONS, ONLY: GET_FILE_NUMBER,SHUTDOWN
@@ -3173,26 +3173,27 @@ US=U
 VS=V
 WS=W
 
-!Set normal velocity on external and internal boundaries (follows divg)
+! Set normal velocity on external and internal boundaries (follows divg)
+
 DO IW=1,N_EXTERNAL_WALL_CELLS+N_INTERNAL_WALL_CELLS
-   WC => WALL(IW)
+   WC  => WALL(IW)
    IOR = WC%IOR
-   II = WC%II
-   JJ = WC%JJ
-   KK = WC%KK
+   II  = WC%II
+   JJ  = WC%JJ
+   KK  = WC%KK
    SELECT CASE(IOR)
-      CASE(1)
+      CASE( 1)
          WC%UWS = -U(II,JJ,KK)
       CASE(-1)
-         WC%UWS = U(II-1,JJ,KK)
-      CASE(2)
+         WC%UWS =  U(II-1,JJ,KK)
+      CASE( 2)
          WC%UWS = -V(II,JJ,KK)
       CASE(-2)
-         WC%UWS = V(II,JJ-1,KK)
-      CASE(3)
+         WC%UWS =  V(II,JJ-1,KK)
+      CASE( 3)
          WC%UWS = -W(II,JJ,KK)
       CASE(-3)
-         WC%UWS = W(II,JJ,KK-1)
+         WC%UWS =  W(II,JJ,KK-1)
    END SELECT
    WALL(IW)%UW = WALL(IW)%UWS
 ENDDO
