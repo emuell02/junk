@@ -472,7 +472,7 @@ TREE_LOOP: DO NCT=1,N_TREES
         IF (N_TREE_OUT(NCT) /= 0) THEN
          CALL GET_IJK(LP%X,LP%Y,LP%Z,NM,XI,YJ,ZK,II,JJ,KK)
          !update for custom veg to have a predefined section of veg output to the tree csv data
-         IF (VEG_FUEL_GEOM(NCT).NE.'CUSTOM') THEN
+         IF (VEG_FUEL_GEOM(NCT).EQ.'CUSTOM') THEN
             IF (LP%X.GT.XS_CUST_VEG(N_CUST_TREE) .AND. LP%X.LT.XF_CUST_VEG(N_CUST_TREE)) THEN
                IF (LP%Y.GT.YS_CUST_VEG(N_CUST_TREE) .AND. LP%Y.LT.YF_CUST_VEG(N_CUST_TREE)) THEN
                   IF (LP%Z.GT.ZS_CUST_VEG(N_CUST_TREE) .AND. LP%Z.LT.ZF_CUST_VEG(N_CUST_TREE)) THEN
