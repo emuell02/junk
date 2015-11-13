@@ -471,8 +471,21 @@ TREE_LOOP: DO NCT=1,N_TREES
 !       TREE_MESH_OUT(NM) = .FALSE.
         IF (N_TREE_OUT(NCT) /= 0) THEN
          CALL GET_IJK(LP%X,LP%Y,LP%Z,NM,XI,YJ,ZK,II,JJ,KK)
-         IJK_VEGOUT(II,JJ,KK) = 1
-         LP%VEG_N_TREE_OUTPUT = N_TREE_OUT(NCT)
+         !update for custom veg to have a predefined section of veg output to the tree csv data
+         IF (VEG_FUEL_GEOM(NCT).NE.'CUSTOM') THEN
+            IF (LP%X.GT.XS_CUST_VEG(N_CUST_TREE) .AND. LP%X.LT.XF_CUST_VEG(N_CUST_TREE)) THEN
+               IF (LP%Y.GT.YS_CUST_VEG(N_CUST_TREE) .AND. LP%Y.LT.YF_CUST_VEG(N_CUST_TREE)) THEN
+                  IF (LP%Z.GT.ZS_CUST_VEG(N_CUST_TREE) .AND. LP%Z.LT.ZF_CUST_VEG(N_CUST_TREE)) THEN
+                     IJK_VEGOUT(II,JJ,KK) = 1
+                     LP%VEG_N_TREE_OUTPUT = N_TREE_OUT(NCT)
+                  ENDIF
+               ENDIF
+            ENDIF
+         ELSE
+            IJK_VEGOUT(II,JJ,KK) = 1
+            LP%VEG_N_TREE_OUTPUT = N_TREE_OUT(NCT)
+         ENDIF
+
          LP%IOR = 0 !airborne static PARTICLE
 !        TREE_MESH_OUT(NM) = .TRUE.
         ENDIF
@@ -553,6 +566,12 @@ ENDIF
 
 IF (CUSTOM_TREE_PRESENT) THEN
  DEALLOCATE(TREE_CUSTOM_INDEX)
+ DEALLOCATE(XS_CUST_VEG)
+ DEALLOCATE(XF_CUST_VEG)
+ DEALLOCATE(YS_CUST_VEG)
+ DEALLOCATE(YF_CUST_VEG)
+ DEALLOCATE(ZS_CUST_VEG)
+ DEALLOCATE(ZF_CUST_VEG)
 ENDIF
 
 IF (IGNITOR_PRESENT) THEN
