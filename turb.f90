@@ -1164,11 +1164,11 @@ VENT_LOOP: DO NV=1,MESHES(NM)%N_VENT
       CASE(2) !experimental divergence free method
          SIG_IJ => VT%SIGMA_IJ
          A_IJ(1,1)=sqrt((R_IJ(1,1)/SIG_IJ(1,1)**2+R_IJ(2,2)/SIG_IJ(2,2)**2+R_IJ(3,3)/SIG_IJ(3,3)**2 &
-            - 2*R_IJ(1,1)/SIG_IJ(1,1)**2)/(2*2))
+            - 2*R_IJ(1,1)/SIG_IJ(1,1)**2)/(2*1.875))
          A_IJ(2,2)=sqrt((R_IJ(1,1)/SIG_IJ(1,1)**2+R_IJ(2,2)/SIG_IJ(2,2)**2+R_IJ(3,3)/SIG_IJ(3,3)**2 &
-            - 2*R_IJ(2,2)/SIG_IJ(2,2)**2)/(2*2))   
+            - 2*R_IJ(2,2)/SIG_IJ(2,2)**2)/(2*1.875))   
          A_IJ(3,3)=sqrt((R_IJ(1,1)/SIG_IJ(1,1)**2+R_IJ(2,2)/SIG_IJ(2,2)**2+R_IJ(3,3)/SIG_IJ(3,3)**2 &
-            - 2*R_IJ(3,3)/SIG_IJ(3,3)**2)/(2*2))   
+            - 2*R_IJ(3,3)/SIG_IJ(3,3)**2)/(2*1.875))   
       CASE(3) !experimental divergence free method
          SIG_IJ => VT%SIGMA_IJ
          A_IJ(1,1)=sqrt(R_IJ(1,1)+R_IJ(2,2)+R_IJ(3,3) - 2*R_IJ(1,1))
@@ -1396,15 +1396,21 @@ VENT_LOOP: DO NV=1,N_VENT
       CASE(2)
          !VOLUME_WEIGHTING_FACTOR(1:3) = sqrt(20*VT%EDDY_BOX_VOLUME/REAL(VT%N_EDDY,EB)/VT%SIGMA_IJ(1,1)**5)
          VOLUME_WEIGHTING_FACTOR(1:3) = sqrt(10*VT%EDDY_BOX_VOLUME/REAL(VT%N_EDDY,EB))/EDDY_VOLUME(1) &
-            *MINVAL(VT%SIGMA_IJ(1,:))*SUM(VT%SIGMA_IJ(1,:))/3
+            *MINVAL(VT%SIGMA_IJ(1,:))*SUM(VT%SIGMA_IJ(1,:)/3)
       CASE(3)
          VOLUME_WEIGHTING_FACTOR(1:3) = SQRT(15*VT%EDDY_BOX_VOLUME)/SQRT(REAL(VT%N_EDDY,EB)*15*PI*EDDY_VOLUME(1))
-   END SELECT
+      END SELECT
    ! note: EDDY_VOLUME included in SQRT based on Jung-il Choi write up.
    
-   VT%U_EDDY = VT%U_EDDY*VOLUME_WEIGHTING_FACTOR(1)
-   VT%V_EDDY = VT%V_EDDY*VOLUME_WEIGHTING_FACTOR(2)
-   VT%W_EDDY = VT%W_EDDY*VOLUME_WEIGHTING_FACTOR(3)
+   IF (EDDY_METHOD==2) THEN !rotation to global axes from principal (eigenvalues specific to my case, for now)
+      VT%U_EDDY = (-0.98*VT%U_EDDY-0.19*VT%V_EDDY+0.01*VT%W_EDDY)*VOLUME_WEIGHTING_FACTOR(1)
+      VT%V_EDDY = (0.18*VT%U_EDDY-0.95*VT%V_EDDY+0.25*VT%W_EDDY)*VOLUME_WEIGHTING_FACTOR(2)
+      VT%W_EDDY = (0.04*VT%U_EDDY+0.25*VT%V_EDDY+0.97*VT%W_EDDY)*VOLUME_WEIGHTING_FACTOR(3)
+   ELSE
+      VT%U_EDDY = VT%U_EDDY*VOLUME_WEIGHTING_FACTOR(1)
+      VT%V_EDDY = VT%V_EDDY*VOLUME_WEIGHTING_FACTOR(2)
+      VT%W_EDDY = VT%W_EDDY*VOLUME_WEIGHTING_FACTOR(3)
+   END
    
    ! subtract mean from normal components so that fluctuations do not affect global volume flow
    
