@@ -1099,7 +1099,7 @@ TIME_SUBCYCLING_LOOP: DO IDT=1,NDT_CYCLES
      TMP_VEG_NEW  = MIN(TMP_CHAR_MAX,TMP_VEG_NEW)
 !print 1111,tmp_veg_new,mpv_moist,mpv_volit,q_veg_char,mpv_char_loss
 !1111 format(2x,5(e15.5))
-     IF (MPV_VEG <= MPV_VEG_MIN) MPV_VOLIT = 0.0_EB
+     !IF (MPV_VEG <= MPV_VEG_MIN) MPV_VOLIT = 0.0_EB
 
    ENDIF IF_NOT_IGNITOR1
  ENDIF IF_VEG_DEGRADATION_ARRHENIUS
@@ -1137,7 +1137,7 @@ TIME_SUBCYCLING_LOOP: DO IDT=1,NDT_CYCLES
  !                         (-FCTR_RDT_CYCLES*QCON_VEG*RCP_GAS + Q_ENTHALPY*RCP_GAS)/(RHO_GAS*TMP_GAS) + &
  !                         RDT*MW_AVERAGE 
  D_LAGRANGIAN(II,JJ,KK) = D_LAGRANGIAN(II,JJ,KK)  +           & 
-                          (Q_ENTHALPY*RCP_GAS)/(RHO_GAS*TMP_GAS) + &
+                          (RDT*Q_ENTHALPY*RCP_GAS)/(RHO_GAS*TMP_GAS) + &
                           RDT*MW_AVERAGE 
 
 

@@ -1415,18 +1415,21 @@ VENT_LOOP: DO NV=1,N_VENT
    ! note: EDDY_VOLUME included in SQRT based on Jung-il Choi write up.
    
 
-      VT%U_EDDY = VT%U_EDDY*VOLUME_WEIGHTING_FACTOR(1)
-      VT%V_EDDY = VT%V_EDDY*VOLUME_WEIGHTING_FACTOR(2)
-      VT%W_EDDY = VT%W_EDDY*VOLUME_WEIGHTING_FACTOR(3)
-
    IF (EDDY_METHOD==2) THEN !rotation to global axes from principal (eigenvalues specific to my case, for now)
       VT%UT1=VT%U_EDDY
       VT%UT2=VT%V_EDDY
       VT%UT3=VT%W_EDDY
-      VT%U_EDDY = (-0.982*VT%UT1-0.187*VT%UT2-0.007*VT%UT3)
-      VT%V_EDDY = (0.183*VT%UT1-0.951*VT%UT2-0.249*VT%UT3)
-      VT%W_EDDY = (-0.040*VT%UT1+0.246*VT%UT2-0.969*VT%UT3)
+      VT%U_EDDY = (-0.987*VT%UT1-0.162*VT%UT2-0.021*VT%UT3)
+      VT%V_EDDY = (0.151*VT%UT1-0.953*VT%UT2+0.261*VT%UT3)
+      VT%W_EDDY = (-0.062*VT%UT1+0.254*VT%UT2+0.965*VT%UT3)
+      !VT%U_EDDY = (-0.987*VT%UT1+0.151*VT%UT2-0.062*VT%UT3)
+      !VT%V_EDDY = (-0.162*VT%UT1-0.953*VT%UT2+0.254*VT%UT3)
+      !VT%W_EDDY = (-0.021*VT%UT1+0.261*VT%UT2+0.965*VT%UT3)
    END IF
+   
+   VT%U_EDDY = VT%U_EDDY*VOLUME_WEIGHTING_FACTOR(1)
+   VT%V_EDDY = VT%V_EDDY*VOLUME_WEIGHTING_FACTOR(2)
+   VT%W_EDDY = VT%W_EDDY*VOLUME_WEIGHTING_FACTOR(3)
    
    ! subtract mean from normal components so that fluctuations do not affect global volume flow
    
