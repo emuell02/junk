@@ -877,7 +877,9 @@ MEAN_FORCING_X: IF (MEAN_FORCING(1)) THEN
             IC1 = CELL_INDEX(I,J,K)
             IC2 = CELL_INDEX(I+1,J,K)
             IF (SOLID(IC1) .OR. SOLID(IC2)) CYCLE
-            IF (IMMERSED_BOUNDARY_METHOD>0 .AND. U_MASK(I,J,K)==-1) CYCLE
+            IF (IMMERSED_BOUNDARY_METHOD>0) THEN 
+               IF (U_MASK(I,J,K)==-1) CYCLE
+            END IF
 	    IF (.NOT.MEAN_FORCING_CELL(I,J,K)  ) CYCLE
 	    IF (.NOT.MEAN_FORCING_CELL(I+1,J,K)) CYCLE
 	    VC = DXN(I)*DY(J)*DZ(K)
@@ -913,7 +915,9 @@ MEAN_FORCING_Y: IF (MEAN_FORCING(2)) THEN
             IC1 = CELL_INDEX(I,J,K)
             IC2 = CELL_INDEX(I,J+1,K)
             IF (SOLID(IC1) .OR. SOLID(IC2)) CYCLE
-            IF (IMMERSED_BOUNDARY_METHOD>0 .AND. V_MASK(I,J,K)==-1) CYCLE
+            IF (IMMERSED_BOUNDARY_METHOD>0) THEN
+               IF (V_MASK(I,J,K)==-1) CYCLE
+            END IF
 	    IF (.NOT.MEAN_FORCING_CELL(I,J,K)  ) CYCLE
 	    IF (.NOT.MEAN_FORCING_CELL(I,J+1,K)) CYCLE
             VC = DX(I)*DYN(J)*DZ(K)
@@ -949,7 +953,9 @@ MEAN_FORCING_Z: IF (MEAN_FORCING(3)) THEN
             IC1 = CELL_INDEX(I,J,K)
             IC2 = CELL_INDEX(I,J,K+1)
             IF (SOLID(IC1) .OR. SOLID(IC2)) CYCLE
-            IF (IMMERSED_BOUNDARY_METHOD>0 .AND. W_MASK(I,J,K)==-1) CYCLE
+            IF (IMMERSED_BOUNDARY_METHOD>0) THEN
+               IF (W_MASK(I,J,K)==-1) CYCLE
+            END IF
 	    IF (.NOT.MEAN_FORCING_CELL(I,J,K)  ) CYCLE
 	    IF (.NOT.MEAN_FORCING_CELL(I,J,K+1)) CYCLE
             VC = DX(I)*DY(J)*DZN(K)
