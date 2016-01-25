@@ -399,7 +399,7 @@ IF (NOISE .OR. PERIODIC_TEST>0) THEN
       CALL VELOCITY_BC(T_BEGIN,NM)
    ENDDO
 ENDIF
-
+print*,PR_ONTH
 ! Potentially read data from a previous calculation 
  
 DO NM=1,NMESHES
