@@ -1385,6 +1385,7 @@ VEG_WALL_CELL_LOOP: DO IW=1,N_EXTERNAL_WALL_CELLS+N_INTERNAL_WALL_CELLS
   Q_VEG_VOLIT     = 0.0_EB
   Q_UPTO_VOLIT    = 0.0_EB
   Q_VOLIT         = 0.0_EB
+  Q_VEG_CHAR      = 0.0_EB
   MPA_MOIST_LOSS  = 0.0_EB
   MPA_VOLIT       = 0.0_EB
   MPA_CHAR_LOSS  = 0.0_EB
@@ -1431,8 +1432,8 @@ VEG_WALL_CELL_LOOP: DO IW=1,N_EXTERNAL_WALL_CELLS+N_INTERNAL_WALL_CELLS
 ! Determine vertical gas-phase grid cell index for each vegetation layer. 
 ! This is needed for cases in which the vegetation height is larger than the height of the first grid cell
   SF%VEG_KGAS_L(:) = 0
-  DO IVEG_L = 0, NVEG_L - LBURN
-   ZVEG = WC%VEG_HEIGHT - REAL(IVEG_L,EB)*DZVEG_L 
+  DO IVEG_L = 1, NVEG_L - LBURN
+   ZVEG = WC%VEG_HEIGHT - REAL(IVEG_L+LBURN-1,EB)*DZVEG_L 
    DO KGRID = 1,8
      IF (ZVEG > Z(KGRID-1) .AND. ZVEG <= Z(KGRID)) SF%VEG_KGAS_L(IVEG_L)=KGRID
    ENDDO
@@ -1550,7 +1551,7 @@ VEG_WALL_CELL_LOOP: DO IW=1,N_EXTERNAL_WALL_CELLS+N_INTERNAL_WALL_CELLS
      U2 = 0.25*(U(IIG,JJG,KKG)+U(IIG-1,JJG,KKG))**2
      V2 = 0.25*(V(IIG,JJG,KKG)+V(IIG,JJG-1,KKG))**2
      K_AIR    = CPOPR*MU_AIR !W/(m.K)
-     RE_VEG_PART = 4._EB*RHO_GAS*SQRT(U2 + V2 + W(IIG,JJG,1)**2)/SF%VEG_SV/MU_AIR
+     RE_D = 4._EB*RHO_GAS*SQRT(U2 + V2 + W(IIG,JJG,1)**2)/SF%VEG_SV/MU_AIR
      IF(RE_D<4) THEN
         CN=0.989_EB
         CM=0.33_EB
@@ -1561,7 +1562,7 @@ VEG_WALL_CELL_LOOP: DO IW=1,N_EXTERNAL_WALL_CELLS+N_INTERNAL_WALL_CELLS
         CN=0.683_EB
         CM=0.466_EB
      ENDIF
-     RE_H = RE_VEG_PART**CM
+     RE_H = RE_D**CM
      H_CONV_L = 0.25*CN*SF%VEG_SV*K_AIR*RE_H*PR_ONTH !W/m^2
     ENDIF
 !
@@ -1785,7 +1786,7 @@ VEG_WALL_CELL_LOOP: DO IW=1,N_EXTERNAL_WALL_CELLS+N_INTERNAL_WALL_CELLS
 ! Drying and pyrolysis occur according to Arrehnius expressions obtained 
 ! from the literature (Porterie et al., Num. Heat Transfer, 47:571-591, 2005
 ! Predicting wildland fire behavior and emissions using a fine-scale physical
-! model
+! model H_CHAR_VEG 
 
   IF_VEG_DEGRADATION_ARRHENIUS: IF(SF%VEG_DEGRADATION == 'ARRHENIUS') THEN
 !   A_H2O_VEG      = 600000._EB !1/s sqrt(K)
@@ -1870,7 +1871,7 @@ VEG_WALL_CELL_LOOP: DO IW=1,N_EXTERNAL_WALL_CELLS+N_INTERNAL_WALL_CELLS
       WC%VEG_CHARMASS_L(IVEG_L) = MPA_CHAR
 
       WC%MASSFLUX(I_FUEL)= WC%MASSFLUX(I_FUEL) + MPA_VOLIT*RDT_BC
-      IF (I_WATER > 0) WC%MASSFLUX(I_WATER) = WC%MASSFLUX(I_WATER) + MPA_MOIST*RDT_BC
+      IF (I_WATER > 0) WC%MASSFLUX(I_WATER) = WC%MASSFLUX(I_WATER) + MPA_MOIST_LOSS*RDT_BC
 
 !Char oxidation oF Vegetation Layer within the Arrhenius pyrolysis model
 !(note that this can be handled only approximately with the conserved
@@ -1879,10 +1880,10 @@ VEG_WALL_CELL_LOOP: DO IW=1,N_EXTERNAL_WALL_CELLS+N_INTERNAL_WALL_CELLS
 !relation for oxygen based on the conserved scalar approach for gas phase
 !combustion)
       IF_CHAR_OXIDATION: IF (SF%VEG_CHAR_OXIDATION .AND. MPA_CHAR > 0.0_EB) THEN
-         RE_D = RHO_GAS*SQRT(U2 + V2 + W(IIG,JJG,1)**2)*2._EB/SF%VEG_SV/MU_AIR 
+         RE_D = RHO_GAS*SQRT(U2 + V2 + W(IIG,JJG,1)**2)*4._EB/SF%VEG_SV/MU_AIR 
          ZZ_GET(1:N_TRACKED_SPECIES) = ZZ(IIG,JJG,KKG,1:N_TRACKED_SPECIES)
          CALL GET_MASS_FRACTION(ZZ_GET,O2_INDEX,Y_O2)
-         MPA_CHAR_LOSS = DT*RHO_GAS*Y_O2*A_CHAR_VEG/NU_O2_CHAR_VEG*SF%VEG_SV*  &
+         MPA_CHAR_LOSS = DT_BC*RHO_GAS*Y_O2*A_CHAR_VEG/NU_O2_CHAR_VEG*SF%VEG_SV*  &
                          SF%VEG_PACKING*EXP(-E_CHAR_VEG/WC%VEG_TMP_L(IVEG_L))*  &
                          (1+BETA_CHAR_VEG*SQRT(2._EB*RE_D))
          MPA_CHAR_LOSS = MIN(MPA_CHAR,MPA_CHAR_LOSS)
@@ -1905,7 +1906,7 @@ VEG_WALL_CELL_LOOP: DO IW=1,N_EXTERNAL_WALL_CELLS+N_INTERNAL_WALL_CELLS
                          CP_CHAR*WC%VEG_CHARMASS_L(IVEG_L) + CP_ASH*WC%VEG_ASHMASS_L(IVEG_L)
 
       WC%VEG_TMP_L(IVEG_L) = WC%VEG_TMP_L(IVEG_L) + (DT_BC*SF%VEG_DIVQNET_L(IVEG_L-LBURN) - &
-                             (MPA_MOIST_LOSS*H_H2O_VEG + MPA_VOLIT*H_PYR_VEG) + CHAR_ENTHALPY_FRACTION_VEG*Q_VEG_CHAR ) &
+                             (MPA_MOIST_LOSS*H_H2O_VEG + MPA_VOLIT*H_PYR_VEG + CHAR_ENTHALPY_FRACTION_VEG*Q_VEG_CHAR)) &
                              /CP_MOIST_AND_VEG
       WC%VEG_TMP_L(IVEG_L) = MAX( WC%VEG_TMP_L(IVEG_L), TMPA)
       WC%VEG_TMP_L(IVEG_L) = MIN( WC%VEG_TMP_L(IVEG_L), TMP_CHAR_MAX)

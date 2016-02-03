@@ -4557,7 +4557,8 @@ SELECT CASE(IND)
       ENDIF
       
    CASE(22)  ! HS
-      GAS_PHASE_OUTPUT = HS(II,JJ,KK)
+      GAS_PHASE_OUTPUT = PBAR(KK,PRESSURE_ZONE(II,JJ,KK))
+      !GAS_PHASE_OUTPUT = HS(II,JJ,KK)
    CASE(23)  ! KINETIC ENERGY (per unit mass) -- do not average because this operation is dissipative
       UU   = U(MIN(IBAR,II),JJ,KK)
       VV   = V(II,MIN(JBAR,JJ),KK)
