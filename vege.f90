@@ -1541,7 +1541,9 @@ VEG_WALL_CELL_LOOP: DO IW=1,N_EXTERNAL_WALL_CELLS+N_INTERNAL_WALL_CELLS
 
 !Convective heat correlation for laminar flow (Holman see ref above) 
 !   IF (H_VERT_CYLINDER_LAMINAR) H_CONV_L = 1.42_EB*(ABS(DTMP_L)/DZVEG_L)**0.25
-    IF (SF%VEG_HCONV_CYLLAM) H_CONV_L = 1.42_EB*(ABS(DTMP_L)/DZVEG_L)**0.25
+    !IF (SF%VEG_HCONV_CYLLAM) H_CONV_L = 1.42_EB*(ABS(DTMP_L)/DZVEG_L)**0.25
+    IF (SF%VEG_HCONV_CYLLAM) H_CONV_L = 1.32_EB*(ABS(DTMP_L)/(4/SF%VEG_SV))**0.25
+
 
 !Convective heat correlation that accounts for air flow (used by Porterie via DeWitt)
 !   IF(H_CYLINDER_RE) THEN 
