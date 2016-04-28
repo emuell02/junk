@@ -1543,7 +1543,8 @@ VEG_WALL_CELL_LOOP: DO IW=1,N_EXTERNAL_WALL_CELLS+N_INTERNAL_WALL_CELLS
 !   IF (H_VERT_CYLINDER_LAMINAR) H_CONV_L = 1.42_EB*(ABS(DTMP_L)/DZVEG_L)**0.25
     !IF (SF%VEG_HCONV_CYLLAM) H_CONV_L = 1.42_EB*(ABS(DTMP_L)/DZVEG_L)**0.25
     IF (SF%VEG_HCONV_CYLLAM) H_CONV_L = 1.32_EB*(ABS(DTMP_L)/(4/SF%VEG_SV))**0.25
-    
+
+
 !Convective heat correlation that accounts for air flow (used by Porterie via DeWitt)
 !   IF(H_CYLINDER_RE) THEN 
     IF(SF%VEG_HCONV_CYLRE) THEN 
@@ -1675,8 +1676,6 @@ VEG_WALL_CELL_LOOP: DO IW=1,N_EXTERNAL_WALL_CELLS+N_INTERNAL_WALL_CELLS
 !         sf%veg_divqnet_l(i),-veg_div_qrnet_inc(i),veg_div_qrnet_emiss(i)
 !1000 format(i3,1x,i3,1x,f7.2,1x,f7.2,1x,f8.2,1x,f8.2,1x,f8.2)
   ENDDO
-  !Experimental radiation out of fuel layer
-  WALL(IW)%QRADOUT=VEG_QRP_INC(0)+VEG_QRP_EMISS(0)
 !
 !
 !      ************** Boundary Fuel Non-Arrehnius (Linear in temp) Degradation model *************************
@@ -1775,6 +1774,7 @@ VEG_WALL_CELL_LOOP: DO IW=1,N_EXTERNAL_WALL_CELLS+N_INTERNAL_WALL_CELLS
       
       IF(MPA_VEG <= MPA_VEG_MIN) TMP_VEG_NEW = TMP_G
       WC%VEG_TMP_L(IVEG_L) = TMP_VEG_NEW
+      WC%VEG_TMP_L(IVEG_L) = MAX( WC%VEG_TMP_L(IVEG_L), TMPA)
 
     ENDDO LAYER_LOOP1
 
