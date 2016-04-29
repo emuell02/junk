@@ -1415,17 +1415,17 @@ VENT_LOOP: DO NV=1,N_VENT
    ! note: EDDY_VOLUME included in SQRT based on Jung-il Choi write up.
    
 
-   !IF (EDDY_METHOD==2) THEN !rotation to global axes from principal (eigenvalues specific to my case, for now)
-      !VT%UT1=VT%U_EDDY
-      !VT%UT2=VT%V_EDDY
-      !VT%UT3=VT%W_EDDY
+   IF (EDDY_METHOD==2) THEN !rotation to global axes from principal (eigenvalues specific to my case, for now)
+      VT%UT1=VT%U_EDDY
+      VT%UT2=VT%V_EDDY
+      VT%UT3=VT%W_EDDY
       !VT%U_EDDY = (-0.888*VT%UT1+0.411*VT%UT2+0.208*VT%UT3)
       !VT%V_EDDY = (0.383*VT%UT1+0.910*VT%UT2-0.160*VT%UT3)
       !VT%W_EDDY = (0.254*VT%UT1+0.062*VT%UT2+0.965*VT%UT3)
-      !VT%U_EDDY = (-0.987*VT%UT1-0.162*VT%UT2-0.021*VT%UT3)
-      !VT%V_EDDY = (0.151*VT%UT1-0.953*VT%UT2+0.261*VT%UT3)
-      !VT%W_EDDY = (-0.062*VT%UT1+0.254*VT%UT2+0.965*VT%UT3)
-   !END IF
+      VT%U_EDDY = (-0.976*VT%UT1-0.215*VT%UT2-0.032*VT%UT3)
+      VT%V_EDDY = (0.195*VT%UT1-0.931*VT%UT2+0.309*VT%UT3)
+      VT%W_EDDY = (-0.096*VT%UT1+0.295*VT%UT2+0.951*VT%UT3)
+   END IF
    
    VT%U_EDDY = VT%U_EDDY*VOLUME_WEIGHTING_FACTOR(1)
    VT%V_EDDY = VT%V_EDDY*VOLUME_WEIGHTING_FACTOR(2)
