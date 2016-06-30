@@ -8,7 +8,6 @@ USE GLOBAL_CONSTANTS
 USE MESH_POINTERS
 USE MESH_VARIABLES
 USE COMP_FUNCTIONS
-USE MEMORY_FUNCTIONS, ONLY : CHKMEMERR
 
 IMPLICIT NONE
 
@@ -18,7 +17,7 @@ CHARACTER(255), PARAMETER :: turbdate='$Date: 2012-02-02 07:53:17 -0800 (Thu, 02
 
 PRIVATE
 PUBLIC :: NS_ANALYTICAL_SOLUTION, INIT_TURB_ARRAYS, VARDEN_DYNSMAG, &
-          GET_REV_turb, WALL_MODEL, COMPRESSION_WAVE, VELTAN2D,VELTAN3D,STRATIFIED_MIXING_LAYER, &
+          GET_REV_turb, WERNER_WENGLE_WALL_MODEL, COMPRESSION_WAVE, VELTAN2D,VELTAN3D,STRATIFIED_MIXING_LAYER, &
           SURFACE_HEAT_FLUX_MODEL, SYNTHETIC_TURBULENCE, SYNTHETIC_EDDY_SETUP, TEST_FILTER, EX2G3D, TENSOR_DIFFUSIVITY_MODEL
  
 CONTAINS
@@ -742,135 +741,98 @@ UBAR(N_HI) = MIN(U_MAX,MAX(U_MIN,2._EB*UBAR(N_HI-1)-UBAR(N_HI-2)))
 END SUBROUTINE TOPHAT_FILTER_1D
 
 
-SUBROUTINE WALL_MODEL(SLIP_FACTOR,U_TAU,Y_PLUS,U,NU,DY,S)
+SUBROUTINE WERNER_WENGLE_WALL_MODEL(SF,U_TAU,U1,NU,DZ,ROUGHNESS)
 
-REAL(EB), INTENT(OUT) :: SLIP_FACTOR,U_TAU,Y_PLUS
-REAL(EB), INTENT(IN) :: U,NU,DY,S ! S is the roughness length scale (Pope's notation)
+REAL(EB), INTENT(OUT) :: SF
+REAL(EB), INTENT(IN) :: U1,NU,DZ,ROUGHNESS
 
-REAL(EB), PARAMETER :: RKAPPA=1._EB/0.41_EB ! 1/von Karman constant
-REAL(EB), PARAMETER :: B=5.2_EB,BTILDE_ROUGH=8.5_EB,BTILDE_MAX=9.5_EB ! see Pope (2000) pp. 294,297,298
-REAL(EB), PARAMETER :: S0=1._EB,S1=5.83_EB,S2=30._EB ! approx piece-wise function for Fig. 7.24, Pope (2000) p. 297
-REAL(EB), PARAMETER :: Y1=5._EB,Y2=30._EB
-REAL(EB), PARAMETER :: U1=5._EB,U2=RKAPPA*LOG(Y2)+B
-REAL(EB), PARAMETER :: EPS=1.E-10_EB
+REAL(EB), PARAMETER :: A=8.3_EB,B=1._EB/7._EB
+REAL(EB), PARAMETER :: Z_PLUS_TURBULENT = 11.81_EB
+REAL(EB), PARAMETER :: ALPHA=7.202125273562269_EB !! ALPHA=(1._EB-B)/2._EB*A**((1._EB+B)/(1._EB-B))
+REAL(EB), PARAMETER :: BETA=1._EB+B
+REAL(EB), PARAMETER :: ETA=(1._EB+B)/A
+REAL(EB), PARAMETER :: GAMMA=2._EB/(1._EB+B)
+REAL(EB), PARAMETER :: RKAPPA=2.44_EB ! 1./von Karman constant
+REAL(EB), PARAMETER :: BTILDE=8.50_EB ! see Pope p. 297
 
-REAL(EB) :: Y_CELL_CENTER,TAU_W,BTILDE,DELTA_NU,S_PLUS,DUDY
-INTEGER :: ITER
+REAL(EB) :: U_TAU,TAU_W,NUODZ,Z_PLUS,TAU_ROUGH
 
-! References:
+! References (for smooth walls):
+!
+! Werner, H., Wengle, H. (1991) Large-eddy simulation of turbulent flow over
+! and around a cube in a plate channel. 8th Symposium on Turbulent Shear
+! Flows, Munich, Germany.
+!
+! Pierre Sagaut. Large Eddy Simulation for Incompressible Flows: An Introduction.
+! Springer, 2001.
+!
+! Temmerman, L., Leschziner, M.A., Mellen, C.P., and Frohlich, J. (2003)
+! Investigation of wall-function approximations and subgrid-scale models in
+! Large Eddy Simulation of separated flow in a channel with streamwise
+! periodic constrictions. International Journal of Heat and Fluid Flow,
+! Vol. 24, No. 2, pp. 157-180.
+!
+! Breuer, M., Kniazev, B., and Abel, M. (2007) Development of wall models
+! for LES of separated flows using statistical evaluations. Computers and
+! Fluids, Vol. 36, pp. 817-837.
+!
+! McDermott, R. (2009) FDS Wall Flows, Part I: Straight Channels, NIST Technical Note.
+!
+! References (for rough surfaces):
 !
 ! S. B. Pope (2000) Turbulent Flows, Cambridge.
-
-! Step 1: compute laminar (DNS) stress, and initial guess for LES stress
-
-Y_CELL_CENTER = 0.5_EB*DY
-DUDY = ABS(U)/Y_CELL_CENTER
-TAU_W = NU*DUDY                         ! actually tau_w/rho
-U_TAU = SQRT(ABS(TAU_W))                ! friction velocity
-DELTA_NU = NU/(U_TAU+EPS)               ! viscous length scale
-Y_PLUS = Y_CELL_CENTER/(DELTA_NU+EPS)
-SLIP_FACTOR = -1._EB
-
-! Step 2: compute turbulent (LES) stress
-
-LES_IF: IF (LES) THEN
-
-   ! NOTE: 2 iterations converges TAU_W to roughly 5 % residual error
-   !       3 iterations converges TAU_W to roughly 1 % residual error
-
-   DO ITER=1,3
-
-      S_PLUS = S/(DELTA_NU+EPS) ! roughness in viscous units
-
-      IF (S_PLUS < S0) THEN
-         ! smooth wall
-         Y_PLUS = Y_CELL_CENTER/(DELTA_NU+EPS)
-         IF (Y_PLUS < Y_WERNER_WENGLE) THEN
-            ! viscous sublayer
-            TAU_W = ( U/Y_PLUS )**2
-            U_TAU = SQRT(ABS(TAU_W))
-            DUDY = ABS(U)/Y_CELL_CENTER
-         !ELSE IF (Y_PLUS < Y2) THEN
-         !   ! buffer layer
-         !   TAU_W = ( U/U_PLUS_BUFFER_SEMILOG(Y_PLUS) )**2
-         !   U_TAU = SQRT(TAU_W)
-         !   DUDY = 0.5_EB*(ABS(U)/Y_CELL_CENTER + U_TAU*RKAPPA/Y_CELL_CENTER)
-         ELSE
-            ! log layer
-            TAU_W = ( U/(RKAPPA*LOG(Y_PLUS)+B) )**2
-            U_TAU = SQRT(ABS(TAU_W))
-            DUDY = U_TAU*RKAPPA/Y_CELL_CENTER
-         ENDIF
-      ELSE
-         ! rough wall
-         IF (S_PLUS < S1) THEN
-            BTILDE = B + RKAPPA*LOG(S_PLUS) ! Pope (2000) p. 297, Eq. (7.122)
-         ELSE IF (S_PLUS < S2) THEN
-            BTILDE = BTILDE_MAX ! approximation from Fig. 7.24, Pope (2000) p. 297
-         ELSE
-            BTILDE = BTILDE_ROUGH ! fully rough
-         ENDIF
-         Y_PLUS = Y_CELL_CENTER/S
-         TAU_W = ( U/(RKAPPA*LOG(Y_PLUS)+BTILDE) )**2  ! Pope (2000) p. 297, Eq. (7.121)
-         U_TAU = SQRT(ABS(TAU_W))
-         DUDY = U_TAU*RKAPPA/Y_CELL_CENTER
-      ENDIF
-
-      DELTA_NU = NU/(U_TAU+EPS)
-
-   ENDDO
-
-   ! NOTE: SLIP_FACTOR is no longer used to compute the wall stress, see VELOCITY_BC.
-   ! The stress is taken directly from U_TAU. SLIP_FACTOR is, however, still used to
-   ! compute the velocity gradient at the wall that feeds into the wall vorticity.
-   ! Since the gradients implied by the wall function can be large and lead to instabilities,
-   ! we bound the wall slip between no slip and free slip.
-
-   ! The slip factor (SF) is based on the following approximation to the wall gradient
-   ! (note that u0 is the ghost cell value of the streamwise velocity component and
-   ! y is the wall-normal direction):
-   ! dudy = (u-u0)/dy = (u-SF*u)/dy = u/dy*(1-SF) => SF = 1 - dudy*dy/u
-   ! In this routine, dudy is sampled from the wall model at the location y_cell_center.
-
-   SLIP_FACTOR = MAX(-1._EB,MIN(1._EB,1._EB-DUDY*DY/(ABS(U)+EPS))) ! -1.0 <= SLIP_FACTOR <= 1.0
-
-ENDIF LES_IF
-
-!CONTAINS
 !
-!REAL(EB) FUNCTION U_PLUS_BUFFER_SEMILOG(YP)
+! Moeng, C.-H. (1984) A Large-Eddy Simulation Model for the Study of Planetary
+! Boundary-Layer Turbulence. Journal of the Atmospheric Sciences, Vol. 41, No. 13,
+! pp. 2052-2062.
 !
-!REAL(EB), INTENT(IN) :: YP
-!REAL(EB), PARAMETER :: RKAPPA_BUFFER=(U2-U1)/(LOG(Y2)-LOG(Y1))
-!REAL(EB), PARAMETER :: B_BUFFER=U1-RKAPPA_BUFFER*LOG(Y1)
+! Stoll, R., Porte-Agel, F. (2008) Large-Eddy Simulation of the Stable Atmospheric
+! Boundary Layer using Dynamic Models with Different Averaging Schemes. Boundary-Layer
+! Meteorology, 126:1-28.
 !
-!! semi-log fit connecting U1=Y1=5 to U2=RKAPPA*LOG(Y2)+B at Y2=30
+! Comments:
 !
-!U_PLUS_BUFFER_SEMILOG = RKAPPA_BUFFER*LOG(YP)+B_BUFFER
-!
-!END FUNCTION U_PLUS_BUFFER_SEMILOG
-!
-!REAL(EB) FUNCTION U_PLUS_BUFFER_POLY4(YP)
-!
-!REAL(EB), INTENT(IN) :: YP
-!REAL(EB) :: DYP
-!REAL(EB), PARAMETER :: DYPLUS=25._EB
-!REAL(EB), PARAMETER :: B1 = (U2-Y2)/DYPLUS**2
-!REAL(EB), PARAMETER :: B2 = (RKAPPA/Y2-1._EB)/DYPLUS
-!REAL(EB), PARAMETER :: B3 = (-RKAPPA/Y2**2)*0.5_EB
-!REAL(EB), PARAMETER :: C3 = 6._EB*B1-3._EB*B2+B3
-!REAL(EB), PARAMETER :: C2 = (4._EB*B1-B2 - 2._EB*C3)/DYPLUS
-!REAL(EB), PARAMETER :: C1 = (B1-C3-DYPLUS*C2)/DYPLUS**2
-!
-!! Jung-il Choi, Yonsei University
-!! 4th-order polynomial fit connecting U1=Y1=5 to U2=RKAPPA*LOG(Y2)+B at Y2=30
-!
-!DYP = YP-Y1
-!U_PLUS_BUFFER_POLY4 = C1*DYP**4 + C2*DYP**3 + C3*DYP**2 + YP
-!
-!END FUNCTION U_PLUS_BUFFER_POLY4
+! The slip factor (SF) is based on the following approximation to the wall stress
+! (note that u0 is the ghost cell value of the streamwise velocity component and
+! z is the wall-normal direction):
+! tau_w = mu*(u1-u0)/dz = mu*(u1-SF*u1)/dz = mu*u1/dz*(1-SF)
+! note that tau_w/rho = nu*u1/dz*(1-SF)
 
-END SUBROUTINE WALL_MODEL
+TAU_ROUGH = 0._EB
+IF (ROUGHNESS>0._EB) THEN
+   ! Pope (2000)
+   TAU_ROUGH = ( U1/(RKAPPA*LOG(0.5_EB*DZ/ROUGHNESS)+BTILDE) )**2 ! actually tau_w/rho
+ENDIF
+! Werner-Wengle
+NUODZ = NU/DZ
+TAU_W = (ALPHA*(NUODZ)**BETA + ETA*(NUODZ)**B*ABS(U1))**GAMMA ! actually tau_w/rho
+TAU_W = MAX(TAU_W,TAU_ROUGH)
+U_TAU = SQRT(TAU_W)
+Z_PLUS = DZ/(NU/(U_TAU+1.E-10_EB))
+IF (Z_PLUS>Z_PLUS_TURBULENT) THEN
+   SF = 1._EB-TAU_W/(NUODZ*ABS(U1)) ! log layer
+ELSE
+   SF = -1._EB ! viscous sublayer
+ENDIF
+
+!! check values...
+!IF (Z_PLUS>Z_PLUS_TURBULENT) THEN
+!   print *,'A = ',A
+!   print *,'B = ',B
+!   print *,'ALPHA = ',ALPHA
+!   print *,'BETA = ',BETA
+!   print *,'ETA = ',ETA
+!   print *,'GAMMA = ',GAMMA
+!   print *,'U1 = ',U1
+!   print *,'NU/DZ = ',NU_OVER_DZ
+!   print *,'TAU_W/RHO = ',TAU_W
+!   print *,'Z_PLUS = ',Z_PLUS
+!   print *,'SF = ',SF
+!   print *
+!ENDIF
+
+END SUBROUTINE WERNER_WENGLE_WALL_MODEL
+
 
 REAL(EB) FUNCTION VELTAN2D(U_VELO,U_SURF,NN,DN,DIVU,GRADU,GRADP,TAU_IJ,DT,RRHO,MU,I_VEL)
 
@@ -931,7 +893,7 @@ IF (DNS) THEN
 ELSE
    U_STRM_0 = U_STRM
    DO SUBIT=1,1
-      CALL WALL_MODEL(SLIP_COEF,DUMMY,DUMMY,U_STRM-U_STRM_WALL,MU*RRHO,DN,0._EB)
+      CALL WERNER_WENGLE_WALL_MODEL(SLIP_COEF,DUMMY,U_STRM-U_STRM_WALL,MU*RRHO,DN,0._EB)
       !IF (SLIP_COEF< -1._EB .OR. SLIP_COEF>-1._EB) THEN
       !   PRINT *,SUBIT,'WARNING: SLIP_COEF=',SLIP_COEF
       !ENDIF
@@ -1043,7 +1005,7 @@ IF (DNS) THEN
 ELSE
    U_STRM_0 = U_STRM
    DO SUBIT=1,1
-      CALL WALL_MODEL(SLIP_COEF,DUMMY,DUMMY,U_STRM,MU*RRHO,DN,ROUGHNESS)
+      CALL WERNER_WENGLE_WALL_MODEL(SLIP_COEF,DUMMY,U_STRM,MU*RRHO,DN,ROUGHNESS)
       !IF (SLIP_COEF<-100._EB .OR. SLIP_COEF>100._EB) THEN
       !   PRINT *,SUBIT,'WARNING: SLIP_COEF=',SLIP_COEF
       !ENDIF
@@ -1099,19 +1061,10 @@ SUBROUTINE SYNTHETIC_EDDY_SETUP(NM)
 
 INTEGER, INTENT(IN) :: NM
 TYPE(VENTS_TYPE), POINTER :: VT=>NULL()
-INTEGER :: NE,NV,IERROR,SIZE_RAND,TMP,SIZE_RND,IZERO
-INTEGER, DIMENSION(:), ALLOCATABLE :: SEED_RND
-REAL(EB), POINTER, DIMENSION(:,:) :: A_IJ=>NULL(),R_IJ=>NULL(),SIG_IJ=>NULL()
+INTEGER :: NE,NV,IERROR
+REAL(EB), POINTER, DIMENSION(:,:) :: A_IJ=>NULL(),R_IJ=>NULL()
 
 IF (EVACUATION_ONLY(NM)) RETURN
-CALL RANDOM_SEED(SIZE=SIZE_RND)
-ALLOCATE(SEED_RND(SIZE_RND),STAT=IZERO)
-CALL CHKMEMERR('SYNTHETIC_EDDY_SETUP','SEED_RND',IZERO)
-CALL SYSTEM_CLOCK(COUNT=TMP)
-SEED_RND = TMP * 37
-CALL RANDOM_SEED(PUT=SEED_RND)
-DEALLOCATE(SEED_RND)
-
 VENT_LOOP: DO NV=1,MESHES(NM)%N_VENT
    VT => MESHES(NM)%VENTS(NV)
    IF (VT%N_EDDY==0) CYCLE VENT_LOOP
@@ -1120,68 +1073,43 @@ VENT_LOOP: DO NV=1,MESHES(NM)%N_VENT
       CASE(1)
          VT%X_EDDY_MIN = VT%X1-MAXVAL(VT%SIGMA_IJ(:,1))
          VT%X_EDDY_MAX = VT%X2+MAXVAL(VT%SIGMA_IJ(:,1))
-         VT%Y_EDDY_MIN = VT%Y1+MAXVAL(VT%SIGMA_IJ(:,2))
-         VT%Y_EDDY_MAX = VT%Y2-MAXVAL(VT%SIGMA_IJ(:,2))
-         VT%Z_EDDY_MIN = VT%Z1+MAXVAL(VT%SIGMA_IJ(:,3))
-         VT%Z_EDDY_MAX = VT%Z2-MAXVAL(VT%SIGMA_IJ(:,3))
-         VT%EDDY_BOX_VOLUME = (4*MAXVAL(VT%SIGMA_IJ(:,1)))*(VT%Y2-VT%Y1)*(VT%Z2-VT%Z1)
+         VT%Y_EDDY_MIN = VT%Y1
+         VT%Y_EDDY_MAX = VT%Y2
+         VT%Z_EDDY_MIN = VT%Z1
+         VT%Z_EDDY_MAX = VT%Z2
       CASE(2)
-         VT%X_EDDY_MIN = VT%X1+MAXVAL(VT%SIGMA_IJ(:,1))
-         VT%X_EDDY_MAX = VT%X2-MAXVAL(VT%SIGMA_IJ(:,1))
+         VT%X_EDDY_MIN = VT%X1
+         VT%X_EDDY_MAX = VT%X2
          VT%Y_EDDY_MIN = VT%Y1-MAXVAL(VT%SIGMA_IJ(:,2))
          VT%Y_EDDY_MAX = VT%Y2+MAXVAL(VT%SIGMA_IJ(:,2))
-         VT%Z_EDDY_MIN = VT%Z1+MAXVAL(VT%SIGMA_IJ(:,3))
-         VT%Z_EDDY_MAX = VT%Z2-MAXVAL(VT%SIGMA_IJ(:,3))
-         VT%EDDY_BOX_VOLUME = (VT%X2-VT%X1)*(4*MAXVAL(VT%SIGMA_IJ(:,2)))*(VT%Z2-VT%Z1)
+         VT%Z_EDDY_MIN = VT%Z1
+         VT%Z_EDDY_MAX = VT%Z2
       CASE(3)
-         VT%X_EDDY_MIN = VT%X1+MAXVAL(VT%SIGMA_IJ(:,1))
-         VT%X_EDDY_MAX = VT%X2-MAXVAL(VT%SIGMA_IJ(:,1))
-         VT%Y_EDDY_MIN = VT%Y1+MAXVAL(VT%SIGMA_IJ(:,2))
-         VT%Y_EDDY_MAX = VT%Y2-MAXVAL(VT%SIGMA_IJ(:,2))
+         VT%X_EDDY_MIN = VT%X1
+         VT%X_EDDY_MAX = VT%X2
+         VT%Y_EDDY_MIN = VT%Y1
+         VT%Y_EDDY_MAX = VT%Y2
          VT%Z_EDDY_MIN = VT%Z1-MAXVAL(VT%SIGMA_IJ(:,3))
          VT%Z_EDDY_MAX = VT%Z2+MAXVAL(VT%SIGMA_IJ(:,3))
-         VT%EDDY_BOX_VOLUME = (VT%X2-VT%X1)*(VT%Y2-VT%Y1)*(4*MAXVAL(VT%SIGMA_IJ(:,3)))
    END SELECT
 
-   !VT%EDDY_BOX_VOLUME = (VT%X_EDDY_MAX-VT%X_EDDY_MIN)*(VT%Y_EDDY_MAX-VT%Y_EDDY_MIN)* &
-      !(VT%Z_EDDY_MAX-VT%Z_EDDY_MIN)
+   VT%EDDY_BOX_VOLUME = (VT%X_EDDY_MAX-VT%X_EDDY_MIN)*(VT%Y_EDDY_MAX-VT%Y_EDDY_MIN)*(VT%Z_EDDY_MAX-VT%Z_EDDY_MIN)
+   
    EDDY_LOOP: DO NE=1,VT%N_EDDY
-      IERROR=1; CALL EDDY_POSITION(NE,NV,NM,IERROR,0)
+      IERROR=1; CALL EDDY_POSITION(NE,NV,NM,IERROR)
       CALL EDDY_AMPLITUDE(NE,NV,NM)
    ENDDO EDDY_LOOP
    
+   ! Cholesky decomposition of Reynolds stress tensor
    A_IJ => VT%A_IJ
    R_IJ => VT%R_IJ
-   ! Cholesky decomposition of Reynolds stress tensor
-   SELECT CASE(EDDY_METHOD)
-      CASE(1) !original
-         
-         A_IJ = 0._EB
-         A_IJ(1,1) = SQRT(R_IJ(1,1))
-         A_IJ(2,1) = R_IJ(2,1)/A_IJ(1,1)
-         A_IJ(2,2) = SQRT(R_IJ(2,2)-A_IJ(2,1)**2)
-         A_IJ(3,1) = R_IJ(3,1)/A_IJ(1,1)
-         A_IJ(3,2) = (R_IJ(3,2)-A_IJ(2,1)*A_IJ(3,1))/A_IJ(2,2)
-         A_IJ(3,3) = SQRT(R_IJ(3,3)-A_IJ(3,1)**2-A_IJ(3,2)**2)
-   
-      CASE(2) !experimental divergence free method
-         SIG_IJ => VT%SIGMA_IJ
-         
-         A_IJ(1,1)=sqrt((R_IJ(2,2)/SIG_IJ(2,2)**2+R_IJ(3,3)/SIG_IJ(3,3)**2 &
-            - R_IJ(1,1)/SIG_IJ(1,1)**2)/(2*1.875))
-         A_IJ(2,2)=sqrt((R_IJ(1,1)/SIG_IJ(1,1)**2+R_IJ(3,3)/SIG_IJ(3,3)**2 &
-            - R_IJ(2,2)/SIG_IJ(2,2)**2)/(2*1.875))   
-         A_IJ(3,3)=sqrt((R_IJ(1,1)/SIG_IJ(1,1)**2+R_IJ(2,2)/SIG_IJ(2,2)**2 &
-            - R_IJ(3,3)/SIG_IJ(3,3)**2)/(2*1.875))   
-         
-      CASE(3) !experimental divergence free method
-         SIG_IJ => VT%SIGMA_IJ
-         A_IJ(1,1)=sqrt(R_IJ(1,1)+R_IJ(2,2)+R_IJ(3,3) - 2*R_IJ(1,1))
-         A_IJ(2,2)=sqrt(R_IJ(1,1)+R_IJ(2,2)+R_IJ(3,3) - 2*R_IJ(2,2))
-         A_IJ(3,3)=sqrt(R_IJ(1,1)+R_IJ(2,2)+R_IJ(3,3) - 2*R_IJ(3,3))
-   END SELECT
-   !PRINT*,A_IJ(1,1),A_IJ(2,2),A_IJ(3,3) !diagnostic
-   
+   A_IJ = 0._EB
+   A_IJ(1,1) = SQRT(R_IJ(1,1))
+   A_IJ(2,1) = R_IJ(2,1)/A_IJ(1,1)
+   A_IJ(2,2) = SQRT(R_IJ(2,2)-A_IJ(2,1)**2)
+   A_IJ(3,1) = R_IJ(3,1)/A_IJ(1,1)
+   A_IJ(3,2) = (R_IJ(3,2)-A_IJ(2,1)*A_IJ(3,1))/A_IJ(2,2)
+   A_IJ(3,3) = SQRT(R_IJ(3,3)-A_IJ(3,1)**2-A_IJ(3,2)**2)
 
 ENDDO VENT_LOOP
 
@@ -1197,7 +1125,7 @@ INTEGER, INTENT(IN) :: NM
 INTEGER :: NE,NV,II,JJ,KK,IERROR
 TYPE(VENTS_TYPE), POINTER :: VT=>NULL()
 TYPE(SURFACE_TYPE), POINTER :: SF=>NULL()
-REAL(EB) :: XX,YY,ZZ,SHAPE_FACTOR,VOLUME_WEIGHTING_FACTOR(3),EDDY_VOLUME(3),PROFILE_FACTOR,RAMP_T,TSI,DUMMY=0,BBB=1
+REAL(EB) :: XX,YY,ZZ,SHAPE_FACTOR,VOLUME_WEIGHTING_FACTOR(3),EDDY_VOLUME(3),PROFILE_FACTOR,RAMP_T,TSI
 
 ! Reference:
 !
@@ -1216,12 +1144,8 @@ VENT_LOOP: DO NV=1,N_VENT
    VT%U_EDDY = 0._EB
    VT%V_EDDY = 0._EB
    VT%W_EDDY = 0._EB
-   VT%UT1 = 0._EB
-   VT%UT2 = 0._EB
-   VT%UT3 = 0._EB
    SF => SURFACE(VT%SURF_INDEX)
-   
-   
+
    IF (ABS(SF%T_IGN-T_BEGIN)<=SPACING(SF%T_IGN) .AND. SF%RAMP_INDEX(TIME_VELO)>=1) THEN
       TSI = T
    ELSE
@@ -1233,161 +1157,91 @@ VENT_LOOP: DO NV=1,N_VENT
    IOR_SELECT: SELECT CASE(ABS(VT%IOR))
       CASE(1)
          EDDY_LOOP_1: DO NE=1,VT%N_EDDY ! loop over eddies
-            IF (SF%PROFILE==ATMOSPHERIC) THEN
-               IF (MAX(0._EB,VT%Z_EDDY(NE)-GROUND_LEVEL).GE.12.5) THEN
-                  PROFILE_FACTOR = (0.87/.41)*LOG((MAX(0._EB,VT%Z_EDDY(NE)-GROUND_LEVEL)-9.375)/0.4973)
-               ELSE
-                  PROFILE_FACTOR = 3.9*EXP(3*(MAX(0._EB,VT%Z_EDDY(NE)-GROUND_LEVEL)/12.5-1))
-               ENDIF
-            ENDIF
+            IF (SF%PROFILE==ATMOSPHERIC) PROFILE_FACTOR = (MAX(0._EB,VT%Z_EDDY(NE)-GROUND_LEVEL)/SF%Z0)**SF%PLE
             VT%X_EDDY(NE) = VT%X_EDDY(NE) - DT*SF%VEL*SIGN(1._EB,REAL(VT%IOR,EB))*PROFILE_FACTOR*RAMP_T
             VT%Y_EDDY(NE) = VT%Y_EDDY(NE) + DT*SF%VEL_T(1)*PROFILE_FACTOR*RAMP_T
             VT%Z_EDDY(NE) = VT%Z_EDDY(NE) + DT*SF%VEL_T(2)*PROFILE_FACTOR*RAMP_T
-            IERROR=0;      CALL EDDY_POSITION(NE,NV,NM,IERROR,VT%IOR)
+            IERROR=0;      CALL EDDY_POSITION(NE,NV,NM,IERROR)
             IF (IERROR==1) CALL EDDY_AMPLITUDE(NE,NV,NM)
             DO KK=VT%K1+1,VT%K2 ! this block can be made more efficient
                DO JJ=VT%J1+1,VT%J2
                   XX = (VT%X1  - VT%X_EDDY(NE))/VT%SIGMA_IJ(1,1)
                   YY = (YC(JJ) - VT%Y_EDDY(NE))/VT%SIGMA_IJ(1,2)
                   ZZ = (ZC(KK) - VT%Z_EDDY(NE))/VT%SIGMA_IJ(1,3)
-                  SELECT CASE(EDDY_METHOD)
-                     CASE(1)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,DUMMY,DUMMY,DUMMY,1)*SHAPE_FUNCTION(YY,DUMMY,DUMMY,DUMMY,1)*SHAPE_FUNCTION(ZZ,DUMMY,DUMMY,DUMMY,1)
-                        VT%U_EDDY(JJ,KK) = VT%U_EDDY(JJ,KK) + VT%CU_EDDY(NE)*SHAPE_FACTOR
+                  SHAPE_FACTOR = SHAPE_FUNCTION(XX,1)*SHAPE_FUNCTION(YY,1)*SHAPE_FUNCTION(ZZ,1)
+                  VT%U_EDDY(JJ,KK) = VT%U_EDDY(JJ,KK) + VT%CU_EDDY(NE)*SHAPE_FACTOR
                   
-                        XX = (VT%X1  - VT%X_EDDY(NE))/VT%SIGMA_IJ(2,1)
-                        YY = (YC(JJ) - VT%Y_EDDY(NE))/VT%SIGMA_IJ(2,2)
-                        ZZ = (ZC(KK) - VT%Z_EDDY(NE))/VT%SIGMA_IJ(2,3)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,DUMMY,DUMMY,DUMMY,1)*SHAPE_FUNCTION(YY,DUMMY,DUMMY,DUMMY,1)*SHAPE_FUNCTION(ZZ,DUMMY,DUMMY,DUMMY,1)
-                        VT%V_EDDY(JJ,KK) = VT%V_EDDY(JJ,KK) + VT%CV_EDDY(NE)*SHAPE_FACTOR
+                  XX = (VT%X1  - VT%X_EDDY(NE))/VT%SIGMA_IJ(2,1)
+                  YY = (YC(JJ) - VT%Y_EDDY(NE))/VT%SIGMA_IJ(2,2)
+                  ZZ = (ZC(KK) - VT%Z_EDDY(NE))/VT%SIGMA_IJ(2,3)
+                  SHAPE_FACTOR = SHAPE_FUNCTION(XX,1)*SHAPE_FUNCTION(YY,1)*SHAPE_FUNCTION(ZZ,1)
+                  VT%V_EDDY(JJ,KK) = VT%V_EDDY(JJ,KK) + VT%CV_EDDY(NE)*SHAPE_FACTOR
                   
-                        XX = (VT%X1  - VT%X_EDDY(NE))/VT%SIGMA_IJ(3,1)
-                        YY = (YC(JJ) - VT%Y_EDDY(NE))/VT%SIGMA_IJ(3,2)
-                        ZZ = (ZC(KK) - VT%Z_EDDY(NE))/VT%SIGMA_IJ(3,3)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,DUMMY,DUMMY,DUMMY,1)*SHAPE_FUNCTION(YY,DUMMY,DUMMY,DUMMY,1)*SHAPE_FUNCTION(ZZ,DUMMY,DUMMY,DUMMY,1)
-                        VT%W_EDDY(JJ,KK) = VT%W_EDDY(JJ,KK) + VT%CW_EDDY(NE)*SHAPE_FACTOR
-                  
-                     CASE(2)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,1),4)
-                        VT%U_EDDY(JJ,KK) = VT%U_EDDY(JJ,KK) + SHAPE_FACTOR*YY*VT%CW_EDDY(NE)-SHAPE_FACTOR*ZZ*VT%CV_EDDY(NE) 
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,2),4)
-                        VT%V_EDDY(JJ,KK) = VT%V_EDDY(JJ,KK) + SHAPE_FACTOR*ZZ*VT%CU_EDDY(NE)-SHAPE_FACTOR*XX*VT%CW_EDDY(NE)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,3),4)
-                        VT%W_EDDY(JJ,KK) = VT%W_EDDY(JJ,KK) + SHAPE_FACTOR*XX*VT%CV_EDDY(NE)-SHAPE_FACTOR*YY*VT%CU_EDDY(NE)
-                     CASE(3)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,1),5)/(XX**2+YY**2+ZZ**2)
-                        VT%U_EDDY(JJ,KK) = VT%U_EDDY(JJ,KK) + SHAPE_FACTOR*YY*VT%CW_EDDY(NE)-SHAPE_FACTOR*ZZ*VT%CV_EDDY(NE) 
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,2),5)/(XX**2+YY**2+ZZ**2)
-                        VT%V_EDDY(JJ,KK) = VT%V_EDDY(JJ,KK) + SHAPE_FACTOR*ZZ*VT%CU_EDDY(NE)-SHAPE_FACTOR*XX*VT%CW_EDDY(NE)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,3),5)/(XX**2+YY**2+ZZ**2)
-                        VT%W_EDDY(JJ,KK) = VT%W_EDDY(JJ,KK) + SHAPE_FACTOR*XX*VT%CV_EDDY(NE)-SHAPE_FACTOR*YY*VT%CU_EDDY(NE)
-                  END SELECT
+                  XX = (VT%X1  - VT%X_EDDY(NE))/VT%SIGMA_IJ(3,1)
+                  YY = (YC(JJ) - VT%Y_EDDY(NE))/VT%SIGMA_IJ(3,2)
+                  ZZ = (ZC(KK) - VT%Z_EDDY(NE))/VT%SIGMA_IJ(3,3)
+                  SHAPE_FACTOR = SHAPE_FUNCTION(XX,1)*SHAPE_FUNCTION(YY,1)*SHAPE_FUNCTION(ZZ,1)
+                  VT%W_EDDY(JJ,KK) = VT%W_EDDY(JJ,KK) + VT%CW_EDDY(NE)*SHAPE_FACTOR
                ENDDO
             ENDDO
          ENDDO EDDY_LOOP_1
       CASE(2)
          EDDY_LOOP_2: DO NE=1,VT%N_EDDY
-            IF (SF%PROFILE==ATMOSPHERIC) THEN
-               IF (MAX(0._EB,VT%Z_EDDY(NE)-GROUND_LEVEL).GE.12.5) THEN
-                  PROFILE_FACTOR = (0.87/.41)*LOG((MAX(0._EB,VT%Z_EDDY(NE)-GROUND_LEVEL)-9.375)/0.4973)
-               ELSE
-                  PROFILE_FACTOR = 3.9*EXP(3*(MAX(0._EB,VT%Z_EDDY(NE)-GROUND_LEVEL)/12.5-1))
-               ENDIF
-            ENDIF
-            VT%X_EDDY(NE) = VT%X_EDDY(NE) + DT*SF%VEL_T(1)*PROFILE_FACTOR*RAMP_T
+            IF (SF%PROFILE==ATMOSPHERIC) PROFILE_FACTOR = (MAX(0._EB,VT%Z_EDDY(NE)-GROUND_LEVEL)/SF%Z0)**SF%PLE
+            VT%X_EDDY(NE) = VT%X_EDDY(NE) + DT*SF%VEL_T(2)*PROFILE_FACTOR*RAMP_T
             VT%Y_EDDY(NE) = VT%Y_EDDY(NE) - DT*SF%VEL*SIGN(1._EB,REAL(VT%IOR,EB))*PROFILE_FACTOR*RAMP_T
-            VT%Z_EDDY(NE) = VT%Z_EDDY(NE) + DT*SF%VEL_T(2)*PROFILE_FACTOR*RAMP_T
-            IERROR=0;      CALL EDDY_POSITION(NE,NV,NM,IERROR,VT%IOR)
+            VT%Z_EDDY(NE) = VT%Z_EDDY(NE) + DT*SF%VEL_T(1)*PROFILE_FACTOR*RAMP_T
+            IERROR=0;      CALL EDDY_POSITION(NE,NV,NM,IERROR)
             IF (IERROR==1) CALL EDDY_AMPLITUDE(NE,NV,NM)
             DO KK=VT%K1+1,VT%K2
                DO II=VT%I1+1,VT%I2
                   XX = (XC(II) - VT%X_EDDY(NE))/VT%SIGMA_IJ(1,1)
                   YY = (VT%Y1  - VT%Y_EDDY(NE))/VT%SIGMA_IJ(1,2)
                   ZZ = (ZC(KK) - VT%Z_EDDY(NE))/VT%SIGMA_IJ(1,3)
-                  SELECT CASE(EDDY_METHOD)
-                     CASE(1)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,DUMMY,DUMMY,DUMMY,1)*SHAPE_FUNCTION(YY,DUMMY,DUMMY,DUMMY,1)*SHAPE_FUNCTION(ZZ,DUMMY,DUMMY,DUMMY,1)
-                        VT%U_EDDY(II,KK) = VT%U_EDDY(II,KK) + VT%CU_EDDY(NE)*SHAPE_FACTOR
+                  SHAPE_FACTOR = SHAPE_FUNCTION(XX,1)*SHAPE_FUNCTION(YY,1)*SHAPE_FUNCTION(ZZ,1)
+                  VT%U_EDDY(II,KK) = VT%U_EDDY(II,KK) + VT%CU_EDDY(NE)*SHAPE_FACTOR
                   
-                        XX = (XC(II) - VT%X_EDDY(NE))/VT%SIGMA_IJ(2,1)
-                        YY = (VT%Y1  - VT%Y_EDDY(NE))/VT%SIGMA_IJ(2,2)
-                        ZZ = (ZC(KK) - VT%Z_EDDY(NE))/VT%SIGMA_IJ(2,3)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,DUMMY,DUMMY,DUMMY,1)*SHAPE_FUNCTION(YY,DUMMY,DUMMY,DUMMY,1)*SHAPE_FUNCTION(ZZ,DUMMY,DUMMY,DUMMY,1)
-                        VT%V_EDDY(II,KK) = VT%V_EDDY(II,KK) + VT%CV_EDDY(NE)*SHAPE_FACTOR
+                  XX = (XC(II) - VT%X_EDDY(NE))/VT%SIGMA_IJ(2,1)
+                  YY = (VT%Y1  - VT%Y_EDDY(NE))/VT%SIGMA_IJ(2,2)
+                  ZZ = (ZC(KK) - VT%Z_EDDY(NE))/VT%SIGMA_IJ(2,3)
+                  SHAPE_FACTOR = SHAPE_FUNCTION(XX,1)*SHAPE_FUNCTION(YY,1)*SHAPE_FUNCTION(ZZ,1)
+                  VT%V_EDDY(II,KK) = VT%V_EDDY(II,KK) + VT%CV_EDDY(NE)*SHAPE_FACTOR
                   
-                        XX = (XC(II) - VT%X_EDDY(NE))/VT%SIGMA_IJ(3,1)
-                        YY = (VT%Y1  - VT%Y_EDDY(NE))/VT%SIGMA_IJ(3,2)
-                        ZZ = (ZC(KK) - VT%Z_EDDY(NE))/VT%SIGMA_IJ(3,3)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,DUMMY,DUMMY,DUMMY,1)*SHAPE_FUNCTION(YY,DUMMY,DUMMY,DUMMY,1)*SHAPE_FUNCTION(ZZ,DUMMY,DUMMY,DUMMY,1)
-                        VT%W_EDDY(II,KK) = VT%W_EDDY(II,KK) + VT%CW_EDDY(NE)*SHAPE_FACTOR 
-                     CASE(2)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,1),4)
-                        VT%U_EDDY(II,KK) = VT%U_EDDY(II,KK) + SHAPE_FACTOR*YY*VT%CW_EDDY(NE)-SHAPE_FACTOR*ZZ*VT%CV_EDDY(NE)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,2),4)
-                        VT%V_EDDY(II,KK) = VT%V_EDDY(II,KK) + SHAPE_FACTOR*ZZ*VT%CU_EDDY(NE)-SHAPE_FACTOR*XX*VT%CW_EDDY(NE)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,3),4)
-                        VT%W_EDDY(II,KK) = VT%W_EDDY(II,KK) + SHAPE_FACTOR*XX*VT%CV_EDDY(NE)-SHAPE_FACTOR*YY*VT%CU_EDDY(NE)
-                     CASE(3)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,1),5)/(XX**2+YY**2+ZZ**2)
-                        VT%U_EDDY(II,KK) = VT%U_EDDY(II,KK) + SHAPE_FACTOR*YY*VT%CW_EDDY(NE)-SHAPE_FACTOR*ZZ*VT%CV_EDDY(NE)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,2),5)/(XX**2+YY**2+ZZ**2)
-                        VT%V_EDDY(II,KK) = VT%V_EDDY(II,KK) + SHAPE_FACTOR*ZZ*VT%CU_EDDY(NE)-SHAPE_FACTOR*XX*VT%CW_EDDY(NE)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,3),5)/(XX**2+YY**2+ZZ**2)
-                        VT%W_EDDY(II,KK) = VT%W_EDDY(II,KK) + SHAPE_FACTOR*XX*VT%CV_EDDY(NE)-SHAPE_FACTOR*YY*VT%CU_EDDY(NE)
-                  END SELECT
+                  XX = (XC(II) - VT%X_EDDY(NE))/VT%SIGMA_IJ(3,1)
+                  YY = (VT%Y1  - VT%Y_EDDY(NE))/VT%SIGMA_IJ(3,2)
+                  ZZ = (ZC(KK) - VT%Z_EDDY(NE))/VT%SIGMA_IJ(3,3)
+                  SHAPE_FACTOR = SHAPE_FUNCTION(XX,1)*SHAPE_FUNCTION(YY,1)*SHAPE_FUNCTION(ZZ,1)
+                  VT%W_EDDY(II,KK) = VT%W_EDDY(II,KK) + VT%CW_EDDY(NE)*SHAPE_FACTOR 
                ENDDO
             ENDDO  
          ENDDO EDDY_LOOP_2
       CASE(3)
          EDDY_LOOP_3: DO NE=1,VT%N_EDDY
-            IF (SF%PROFILE==ATMOSPHERIC) THEN
-               IF (MAX(0._EB,VT%Z_EDDY(NE)-GROUND_LEVEL).GE.12.5) THEN
-                  PROFILE_FACTOR = (0.87/.41)*LOG((MAX(0._EB,VT%Z_EDDY(NE)-GROUND_LEVEL)-9.375)/0.4973)
-               ELSE
-                  PROFILE_FACTOR = 3.9*EXP(3*(MAX(0._EB,VT%Z_EDDY(NE)-GROUND_LEVEL)/12.5-1))
-               ENDIF
-            ENDIF
+            IF (SF%PROFILE==ATMOSPHERIC) PROFILE_FACTOR = (MAX(0._EB,VT%Z_EDDY(NE)-GROUND_LEVEL)/SF%Z0)**SF%PLE
             VT%X_EDDY(NE) = VT%X_EDDY(NE) + DT*SF%VEL_T(1)*PROFILE_FACTOR*RAMP_T
             VT%Y_EDDY(NE) = VT%Y_EDDY(NE) + DT*SF%VEL_T(2)*PROFILE_FACTOR*RAMP_T
             VT%Z_EDDY(NE) = VT%Z_EDDY(NE) - DT*SF%VEL*SIGN(1._EB,REAL(VT%IOR,EB))*PROFILE_FACTOR*RAMP_T
-            IERROR=0;      CALL EDDY_POSITION(NE,NV,NM,IERROR,VT%IOR)
+            IERROR=0;      CALL EDDY_POSITION(NE,NV,NM,IERROR)
             IF (IERROR==1) CALL EDDY_AMPLITUDE(NE,NV,NM)
             DO JJ=VT%J1+1,VT%J2
                DO II=VT%I1+1,VT%I2
                   XX = (XC(II) - VT%X_EDDY(NE))/VT%SIGMA_IJ(1,1)
                   YY = (YC(JJ) - VT%Y_EDDY(NE))/VT%SIGMA_IJ(1,2)
                   ZZ = (VT%Z1  - VT%Z_EDDY(NE))/VT%SIGMA_IJ(1,3)
-                  SELECT CASE(EDDY_METHOD)
-                     CASE(1)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,DUMMY,DUMMY,DUMMY,1)*SHAPE_FUNCTION(YY,DUMMY,DUMMY,DUMMY,1)*SHAPE_FUNCTION(ZZ,DUMMY,DUMMY,DUMMY,1)
-                        VT%U_EDDY(II,JJ) = VT%U_EDDY(II,JJ) + VT%CU_EDDY(NE)*SHAPE_FACTOR
+                  SHAPE_FACTOR = SHAPE_FUNCTION(XX,1)*SHAPE_FUNCTION(YY,1)*SHAPE_FUNCTION(ZZ,1)
+                  VT%U_EDDY(II,JJ) = VT%U_EDDY(II,JJ) + VT%CU_EDDY(NE)*SHAPE_FACTOR
                   
-                        XX = (XC(II) - VT%X_EDDY(NE))/VT%SIGMA_IJ(2,1)
-                        YY = (YC(JJ) - VT%Y_EDDY(NE))/VT%SIGMA_IJ(2,2)
-                        ZZ = (VT%Z1  - VT%Z_EDDY(NE))/VT%SIGMA_IJ(2,3)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,DUMMY,DUMMY,DUMMY,1)*SHAPE_FUNCTION(YY,DUMMY,DUMMY,DUMMY,1)*SHAPE_FUNCTION(ZZ,DUMMY,DUMMY,DUMMY,1)
-                        VT%V_EDDY(II,JJ) = VT%V_EDDY(II,JJ) + VT%CV_EDDY(NE)*SHAPE_FACTOR
+                  XX = (XC(II) - VT%X_EDDY(NE))/VT%SIGMA_IJ(2,1)
+                  YY = (YC(JJ) - VT%Y_EDDY(NE))/VT%SIGMA_IJ(2,2)
+                  ZZ = (VT%Z1  - VT%Z_EDDY(NE))/VT%SIGMA_IJ(2,3)
+                  SHAPE_FACTOR = SHAPE_FUNCTION(XX,1)*SHAPE_FUNCTION(YY,1)*SHAPE_FUNCTION(ZZ,1)
+                  VT%V_EDDY(II,JJ) = VT%V_EDDY(II,JJ) + VT%CV_EDDY(NE)*SHAPE_FACTOR
                   
-                        XX = (XC(II) - VT%X_EDDY(NE))/VT%SIGMA_IJ(3,1)
-                        YY = (YC(JJ) - VT%Y_EDDY(NE))/VT%SIGMA_IJ(3,2)
-                        ZZ = (VT%Z1  - VT%Z_EDDY(NE))/VT%SIGMA_IJ(3,3)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,DUMMY,DUMMY,DUMMY,1)*SHAPE_FUNCTION(YY,DUMMY,DUMMY,DUMMY,1)*SHAPE_FUNCTION(ZZ,DUMMY,DUMMY,DUMMY,1)
-                        VT%W_EDDY(II,JJ) = VT%W_EDDY(II,JJ) + VT%CW_EDDY(NE)*SHAPE_FACTOR 
-                     CASE(2)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,1),4)
-                        VT%U_EDDY(II,JJ) = VT%U_EDDY(II,JJ) + SHAPE_FACTOR*YY*VT%CW_EDDY(NE)-SHAPE_FACTOR*ZZ*VT%CV_EDDY(NE)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,2),4)
-                        VT%V_EDDY(II,JJ) = VT%V_EDDY(II,JJ) + SHAPE_FACTOR*ZZ*VT%CU_EDDY(NE)-SHAPE_FACTOR*XX*VT%CW_EDDY(NE)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,3),4)
-                        VT%W_EDDY(II,JJ) = VT%W_EDDY(II,JJ) + SHAPE_FACTOR*XX*VT%CV_EDDY(NE)-SHAPE_FACTOR*YY*VT%CU_EDDY(NE)
-                     CASE(3)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,1),5)/(XX**2+YY**2+ZZ**2)
-                        VT%U_EDDY(II,JJ) = VT%U_EDDY(II,JJ) + SHAPE_FACTOR*YY*VT%CW_EDDY(NE)-SHAPE_FACTOR*ZZ*VT%CV_EDDY(NE)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,2),5)/(XX**2+YY**2+ZZ**2)
-                        VT%V_EDDY(II,JJ) = VT%V_EDDY(II,JJ) + SHAPE_FACTOR*ZZ*VT%CU_EDDY(NE)-SHAPE_FACTOR*XX*VT%CW_EDDY(NE)
-                        SHAPE_FACTOR = SHAPE_FUNCTION(XX,YY,ZZ,VT%SIGMA_IJ(1,3),5)/(XX**2+YY**2+ZZ**2)
-                        VT%W_EDDY(II,JJ) = VT%W_EDDY(II,JJ) + SHAPE_FACTOR*XX*VT%CV_EDDY(NE)-SHAPE_FACTOR*YY*VT%CU_EDDY(NE)
-                  END SELECT
+                  XX = (XC(II) - VT%X_EDDY(NE))/VT%SIGMA_IJ(3,1)
+                  YY = (YC(JJ) - VT%Y_EDDY(NE))/VT%SIGMA_IJ(3,2)
+                  ZZ = (VT%Z1  - VT%Z_EDDY(NE))/VT%SIGMA_IJ(3,3)
+                  SHAPE_FACTOR = SHAPE_FUNCTION(XX,1)*SHAPE_FUNCTION(YY,1)*SHAPE_FUNCTION(ZZ,1)
+                  VT%W_EDDY(II,JJ) = VT%W_EDDY(II,JJ) + VT%CW_EDDY(NE)*SHAPE_FACTOR 
                ENDDO
             ENDDO  
          ENDDO EDDY_LOOP_3
@@ -1396,36 +1250,12 @@ VENT_LOOP: DO NV=1,N_VENT
    EDDY_VOLUME(1) = VT%SIGMA_IJ(1,1)*VT%SIGMA_IJ(1,2)*VT%SIGMA_IJ(1,3)
    EDDY_VOLUME(2) = VT%SIGMA_IJ(2,1)*VT%SIGMA_IJ(2,2)*VT%SIGMA_IJ(2,3)
    EDDY_VOLUME(3) = VT%SIGMA_IJ(3,1)*VT%SIGMA_IJ(3,2)*VT%SIGMA_IJ(3,3)
-      
-   SELECT CASE(EDDY_METHOD)
-      CASE(1)
-         VOLUME_WEIGHTING_FACTOR(1) = MIN(1._EB,SQRT(VT%EDDY_BOX_VOLUME/REAL(VT%N_EDDY,EB)/EDDY_VOLUME(1)))
-         VOLUME_WEIGHTING_FACTOR(2) = MIN(1._EB,SQRT(VT%EDDY_BOX_VOLUME/REAL(VT%N_EDDY,EB)/EDDY_VOLUME(2)))
-         VOLUME_WEIGHTING_FACTOR(3) = MIN(1._EB,SQRT(VT%EDDY_BOX_VOLUME/REAL(VT%N_EDDY,EB)/EDDY_VOLUME(3)))
-      CASE(2)
-         VOLUME_WEIGHTING_FACTOR(1) = SQRT(2*1.875*945*VT%EDDY_BOX_VOLUME/(32*PI*REAL(VT%N_EDDY,EB)*EDDY_VOLUME(1))/MINVAL(VT%SIGMA_IJ(1,:)))
-         VOLUME_WEIGHTING_FACTOR(2) = SQRT(2*1.875*945*VT%EDDY_BOX_VOLUME/(32*PI*REAL(VT%N_EDDY,EB)*EDDY_VOLUME(1))/MINVAL(VT%SIGMA_IJ(1,:)))
-         VOLUME_WEIGHTING_FACTOR(3) = SQRT(2*1.875*945*VT%EDDY_BOX_VOLUME/(32*PI*REAL(VT%N_EDDY,EB)*EDDY_VOLUME(1))/MINVAL(VT%SIGMA_IJ(1,:)))
-         !VOLUME_WEIGHTING_FACTOR(1:3) = sqrt(10*VT%EDDY_BOX_VOLUME/REAL(VT%N_EDDY,EB))/EDDY_VOLUME(1)*MINVAL(VT%SIGMA_IJ(1,:))*SUM(VT%SIGMA_IJ(1,:))/3 
-         !print*,VT%EDDY_BOX_VOLUME,EDDY_VOLUME(1),MINVAL(VT%SIGMA_IJ(1,:)),SUM(VT%SIGMA_IJ(1,:))/3,VOLUME_WEIGHTING_FACTOR(1:3)   *MINVAL(VT%SIGMA_IJ(1,:))
-            
-      CASE(3)
-         VOLUME_WEIGHTING_FACTOR(1:3) = SQRT(16*VT%EDDY_BOX_VOLUME)/SQRT(15*REAL(VT%N_EDDY,EB)*PI*EDDY_VOLUME(1))      
-      END SELECT
-   ! note: EDDY_VOLUME included in SQRT based on Jung-il Choi write up.
    
-
-   IF (EDDY_METHOD==2) THEN !rotation to global axes from principal (eigenvalues specific to my case, for now)
-      VT%UT1=VT%U_EDDY
-      VT%UT2=VT%V_EDDY
-      VT%UT3=VT%W_EDDY
-      !VT%U_EDDY = (-0.888*VT%UT1+0.411*VT%UT2+0.208*VT%UT3)
-      !VT%V_EDDY = (0.383*VT%UT1+0.910*VT%UT2-0.160*VT%UT3)
-      !VT%W_EDDY = (0.254*VT%UT1+0.062*VT%UT2+0.965*VT%UT3)
-      VT%U_EDDY = (-0.976*VT%UT1-0.215*VT%UT2-0.032*VT%UT3)
-      VT%V_EDDY = (0.195*VT%UT1-0.931*VT%UT2+0.309*VT%UT3)
-      VT%W_EDDY = (-0.096*VT%UT1+0.295*VT%UT2+0.951*VT%UT3)
-   END IF
+   VOLUME_WEIGHTING_FACTOR(1) = MIN(1._EB,SQRT(VT%EDDY_BOX_VOLUME/REAL(VT%N_EDDY,EB)/EDDY_VOLUME(1)))
+   VOLUME_WEIGHTING_FACTOR(2) = MIN(1._EB,SQRT(VT%EDDY_BOX_VOLUME/REAL(VT%N_EDDY,EB)/EDDY_VOLUME(2)))
+   VOLUME_WEIGHTING_FACTOR(3) = MIN(1._EB,SQRT(VT%EDDY_BOX_VOLUME/REAL(VT%N_EDDY,EB)/EDDY_VOLUME(3)))
+   
+   ! note: EDDY_VOLUME included in SQRT based on Jung-il Choi write up.
    
    VT%U_EDDY = VT%U_EDDY*VOLUME_WEIGHTING_FACTOR(1)
    VT%V_EDDY = VT%V_EDDY*VOLUME_WEIGHTING_FACTOR(2)
@@ -1448,9 +1278,9 @@ ENDDO VENT_LOOP
 END SUBROUTINE SYNTHETIC_TURBULENCE
 
 
-SUBROUTINE EDDY_POSITION(NE,NV,NM,IERROR,IOR)
+SUBROUTINE EDDY_POSITION(NE,NV,NM,IERROR)
 
-INTEGER, INTENT(IN) :: NE,NV,NM,IOR
+INTEGER, INTENT(IN) :: NE,NV,NM
 INTEGER, INTENT(INOUT) :: IERROR
 REAL :: RN
 TYPE(VENTS_TYPE), POINTER :: VT=>NULL()
@@ -1468,23 +1298,9 @@ IF (IERROR==0) THEN
 ENDIF
 
 IF (IERROR==1) THEN
-   CALL RANDOM_NUMBER(RN); VT%X_EDDY(NE) = VT%X_EDDY_MIN + REAL(RN,EB)*(VT%X_EDDY_MAX-VT%X_EDDY_MIN)
-   CALL RANDOM_NUMBER(RN); VT%Y_EDDY(NE) = VT%Y_EDDY_MIN + REAL(RN,EB)*(VT%Y_EDDY_MAX-VT%Y_EDDY_MIN)
-   CALL RANDOM_NUMBER(RN); VT%Z_EDDY(NE) = VT%Z_EDDY_MIN + REAL(RN,EB)*(VT%Z_EDDY_MAX-VT%Z_EDDY_MIN)
-   SELECT CASE (IOR) !sends recylced eddies to the back face of the box
-      CASE( 1)
-         VT%X_EDDY(NE) = VT%X_EDDY_MIN      
-      CASE(-1)
-         VT%X_EDDY(NE) = VT%X_EDDY_MAX
-      CASE( 2)
-         VT%Y_EDDY(NE) = VT%Y_EDDY_MIN
-      CASE(-2)
-         VT%Y_EDDY(NE) = VT%Y_EDDY_MAX
-      CASE( 3)
-         VT%Z_EDDY(NE) = VT%Z_EDDY_MIN
-      CASE(-3)
-         VT%Z_EDDY(NE) = VT%Z_EDDY_MAX
-   END SELECT
+    CALL RANDOM_NUMBER(RN); VT%X_EDDY(NE) = VT%X_EDDY_MIN + REAL(RN,EB)*(VT%X_EDDY_MAX-VT%X_EDDY_MIN)
+    CALL RANDOM_NUMBER(RN); VT%Y_EDDY(NE) = VT%Y_EDDY_MIN + REAL(RN,EB)*(VT%Y_EDDY_MAX-VT%Y_EDDY_MIN)
+    CALL RANDOM_NUMBER(RN); VT%Z_EDDY(NE) = VT%Z_EDDY_MIN + REAL(RN,EB)*(VT%Z_EDDY_MAX-VT%Z_EDDY_MIN)
 ENDIF
 
 END SUBROUTINE EDDY_POSITION
@@ -1499,36 +1315,28 @@ TYPE(VENTS_TYPE), POINTER :: VT=>NULL()
 INTEGER :: J
     
 EPS_EDDY=-1._EB
-CALL RANDOM_NUMBER(RN); IF (RN>0.5_EB) EPS_EDDY(1)=1._EB
-CALL RANDOM_NUMBER(RN); IF (RN>0.5_EB) EPS_EDDY(2)=1._EB
-CALL RANDOM_NUMBER(RN); IF (RN>0.5_EB) EPS_EDDY(3)=1._EB
+CALL RANDOM_NUMBER(RN); IF (RN>0.5_8) EPS_EDDY(1)=1._EB
+CALL RANDOM_NUMBER(RN); IF (RN>0.5_8) EPS_EDDY(2)=1._EB
+CALL RANDOM_NUMBER(RN); IF (RN>0.5_8) EPS_EDDY(3)=1._EB
 
 VT => MESHES(NM)%VENTS(NV)
 VT%CU_EDDY(NE)=0._EB
 VT%CV_EDDY(NE)=0._EB
 VT%CW_EDDY(NE)=0._EB
 ! A_IJ is the Cholesky decomposition of R_IJ, see SYNTHETIC_EDDY_SETUP
-SELECT CASE(EDDY_METHOD)
-   CASE(1)
-      DO J=1,3
-         VT%CU_EDDY(NE)=VT%CU_EDDY(NE)+VT%A_IJ(1,J)*EPS_EDDY(J)
-         VT%CV_EDDY(NE)=VT%CV_EDDY(NE)+VT%A_IJ(2,J)*EPS_EDDY(J)
-         VT%CW_EDDY(NE)=VT%CW_EDDY(NE)+VT%A_IJ(3,J)*EPS_EDDY(J)
-      ENDDO
-   CASE(2:3)
-         VT%CU_EDDY(NE)=VT%A_IJ(1,1)*EPS_EDDY(1)
-         VT%CV_EDDY(NE)=VT%A_IJ(2,2)*EPS_EDDY(2)
-         VT%CW_EDDY(NE)=VT%A_IJ(3,3)*EPS_EDDY(3)
-END SELECT
+DO J=1,3
+   VT%CU_EDDY(NE)=VT%CU_EDDY(NE)+VT%A_IJ(1,J)*EPS_EDDY(J)
+   VT%CV_EDDY(NE)=VT%CV_EDDY(NE)+VT%A_IJ(2,J)*EPS_EDDY(J)
+   VT%CW_EDDY(NE)=VT%CW_EDDY(NE)+VT%A_IJ(3,J)*EPS_EDDY(J)
+ENDDO
 
 END SUBROUTINE EDDY_AMPLITUDE
 
 
 
-REAL(EB) FUNCTION SHAPE_FUNCTION(X,Y,Z,SIG,CODE)
+REAL(EB) FUNCTION SHAPE_FUNCTION(X,CODE)
 
-REAL(EB), INTENT(IN) :: X,Y,Z,SIG
-REAL(EB) :: DK
+REAL(EB), INTENT(IN) :: X
 INTEGER, INTENT(IN) :: CODE
 
 SHAPE_FUNCTION = 0._EB
@@ -1539,12 +1347,6 @@ SELECT CASE(CODE)
       IF (ABS(X)<1._EB) SHAPE_FUNCTION = 0.707106781186547_EB ! 1/sqrt(2)
    !CASE(3) ! truncated Gaussian
    !   IF (ABS(X)<1._EB) SHAPE_FUNCTION = C*EXP(-4.5_EB*X**2)
-   CASE(4)
-      DK = SQRT(X**2+Y**2+Z**2)
-      IF (DK<1._EB) SHAPE_FUNCTION = SIG*(1-DK**2)
-   CASE(5)
-      DK = SQRT(X**2+Y**2+Z**2)
-      IF (DK<1._EB) SHAPE_FUNCTION = SIN(PI*DK)**2
 END SELECT
 
 END FUNCTION SHAPE_FUNCTION

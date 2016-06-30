@@ -382,11 +382,10 @@ IF (NOISE .OR. PERIODIC_TEST>0) THEN
       IF (PROCESS(NM)/=MYID) CYCLE
       IF (NOISE) CALL INITIAL_NOISE(NM)
       IF (PERIODIC_TEST==1) CALL NS_ANALYTICAL_SOLUTION(NM)
-      IF (PERIODIC_TEST==22) CALL UVW_INIT(NM,UVW_FILE)
+      IF (PERIODIC_TEST==2) CALL UVW_INIT(NM,UVW_FILE)
       IF (PERIODIC_TEST==3) CALL COMPRESSION_WAVE(NM,0._EB,3)
       IF (PERIODIC_TEST==4) CALL COMPRESSION_WAVE(NM,0._EB,4)
       IF (PERIODIC_TEST==5) CALL STRATIFIED_MIXING_LAYER(NM)
-      IF (UVW_RESTART)      CALL UVW_INIT(NM,CSVFINFO(NM)%UVWFILE)
    ENDDO
    CALL POST_RECEIVES(6)
    CALL MESH_EXCHANGE(6)
@@ -492,16 +491,13 @@ WALL_CLOCK_START_ITERATIONS = WALL_CLOCK_TIME()
 !                                                           MAIN TIMESTEPPING LOOP
 !***********************************************************************************************************************************
 
-! General initialization of Level Set for firespread and fire front propagation without use of CFD.
-IF (ACTIVE_MESH(1) .AND.  PROCESS(1)==MYID) THEN
-  IF (VEG_LEVEL_SET_UNCOUPLED .OR. VEG_LEVEL_SET_COUPLED) CALL INITIALIZE_LEVEL_SET_FIREFRONT(1)
-  IF (VEG_LEVEL_SET_UNCOUPLED) THEN
-    CALL LEVEL_SET_FIREFRONT_PROPAGATION(T(1),1)
-    CALL END_LEVEL_SET
-    CALL END_FDS
-  ENDIF
-ENDIF
+! Level Set model for firespread in vegetation (currently uses constant wind: does not need CFD computations).
 
+IF (VEG_LEVEL_SET) THEN
+  CALL LEVEL_SET_FIRESPREAD(1)
+  CALL END_FDS
+ENDIF
+ 
 MAIN_LOOP: DO  
  
    ICYC  = ICYC + 1   ! Time step iterations
@@ -849,7 +845,6 @@ MAIN_LOOP: DO
       IF (PROCESS(NM)/=MYID .OR. .NOT.ACTIVE_MESH(NM)) CYCLE COMPUTE_WALL_BC_2A
       CALL WALL_BC(T(NM),NM)
       CALL BNDRY_VEG_MASS_ENERGY_TRANSFER(T(NM),NM)
-      CALL LEVEL_SET_FIREFRONT_PROPAGATION(T(NM),NM)
       CALL COMPUTE_RADIATION(T(NM),NM)
       CALL DIVERGENCE_PART_1(T(NM),NM)
    ENDDO COMPUTE_WALL_BC_2A
@@ -956,6 +951,7 @@ MAIN_LOOP: DO
          WRITE(LU_ERR,'(A,I3,A,I6,A,F12.4)')  ' Mesh ',NM,' ends Iteration ',ICYC,' at ', MPI_WALL_TIME
       ENDIF
    ENDDO
+ 
 ENDDO MAIN_LOOP
  
 !***********************************************************************************************************************************
@@ -980,7 +976,6 @@ IF (PRES_METHOD == 'SCARC') CALL SCARC_TIMINGS
 
 ! Stop the calculation
 
-CALL END_LEVEL_SET
 CALL END_FDS
 
 ! The list of subroutines called from the main program follows
